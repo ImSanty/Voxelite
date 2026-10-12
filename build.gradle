@@ -1,0 +1,106 @@
+plugins {
+    id 'java'
+    id 'application'
+}
+
+group = 'com.microvoxel'
+version = '0.1.0'
+
+// ---------------------------------------------------------------------------
+// Versiones fijas y estables (nada de rangos dinamicos).
+// ---------------------------------------------------------------------------
+def lwjglVersion = '3.3.6'
+def jomlVersion = '1.10.8'
+def junitVersion = '5.12.2'
+
+// Clasificador de los binarios nativos de LWJGL segun el SO/arquitectura de
+// desarrollo. Para compilar/ejecutar en otro sistema basta con ejecutar Gradle
+// en ese sistema: la deteccion es automatica.
+//   Windows x64 ......... natives-windows
+//   Windows ARM64 ....... natives-windows-arm64
+//   macOS Intel ......... natives-macos
+//   macOS Apple Silicon . natives-macos-arm64
+//   Linux x64 ........... natives-linux
+//   Linux ARM64 ......... natives-linux-arm64
+def osName = System.getProperty('os.name').toLowerCase(Locale.ROOT)
+def osArch = System.getProperty('os.arch').toLowerCase(Locale.ROOT)
+def aarch64 = osArch.contains('aarch64') || osArch.contains('arm64')
+def lwjglNatives
+if (osName.contains('win')) {
+    lwjglNatives = aarch64 ? 'natives-windows-arm64' : 'natives-windows'
+} else if (osName.contains('mac') || osName.contains('darwin')) {
+    lwjglNatives = aarch64 ? 'natives-macos-arm64' : 'natives-macos'
+} else {
+    lwjglNatives = aarch64 ? 'natives-linux-arm64' : 'natives-linux'
+}
+
+repositories {
+    mavenCentral()
+}
+
+// Java 21: se compila y se enlaza contra la API de Java 21 usando `release`,
+// de modo que el proyecto funciona tanto con un JDK 21 como con JDK posteriores.
+java {
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 21
+    options.encoding = 'UTF-8'
+    options.compilerArgs << '-Xlint:all' << '-Xlint:-serial'
+}
+
+dependencies {
+    // BOM de LWJGL: alinea las versiones de todos los modulos.
+    implementation platform("org.lwjgl:lwjgl-bom:${lwjglVersion}")
+
+    implementation 'org.lwjgl:lwjgl'          // nucleo
+    implementation 'org.lwjgl:lwjgl-glfw'     // ventana / entrada
+    implementation 'org.lwjgl:lwjgl-opengl'   // contexto y funciones GL
+    implementation 'org.lwjgl:lwjgl-stb'      // texto de depuracion (STB easy font)
+
+    runtimeOnly "org.lwjgl:lwjgl::${lwjglNatives}"
+    runtimeOnly "org.lwjgl:lwjgl-glfw::${lwjglNatives}"
+    runtimeOnly "org.lwjgl:lwjgl-opengl::${lwjglNatives}"
+    runtimeOnly "org.lwjgl:lwjgl-stb::${lwjglNatives}"
+
+    implementation "org.joml:joml:${jomlVersion}"
+
+    testImplementation "org.junit.jupiter:junit-jupiter:${junitVersion}"
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+application {
+    mainClass = 'com.microvoxel.Main'
+}
+
+tasks.named('test', Test) {
+    useJUnitPlatform()
+    // El terreno de demostracion almacena ~56M de microvoxels (cada bloque es un
+    // byte[4096] y hay decenas de miles de bloques). Algunos tests construyen
+    // dos mundos a la vez, por lo que se amplia el heap del worker de tests.
+    maxHeapSize = '1g'
+    testLogging {
+        events 'passed', 'skipped', 'failed'
+    }
+}
+
+// Los tests de geometria/datos no necesitan contexto grafico.
+tasks.named('run', JavaExec) {
+    // En macOS GLFW debe ejecutarse en el hilo principal.
+    if (osName.contains('mac') || osName.contains('darwin')) {
+        jvmArgs '-XstartOnFirstThread'
+    }
+    // LWJGL usa FFI; en JDK 22+ conviene habilitar el acceso nativo.
+    if (JavaVersion.current().isCompatibleWith(JavaVersion.VERSION_22)) {
+        jvmArgs '--enable-native-access=ALL-UNNAMED'
+    }
+}
+
+// El jar de distribucion no incluye los nativos, pero permite `gradle run`.
+tasks.named('jar') {
+    manifest {
+        attributes 'Main-Class': application.mainClass.get()
+    }
+}
