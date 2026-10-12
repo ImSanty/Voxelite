@@ -5,6 +5,7 @@ import static org.lwjgl.glfw.GLFW.GLFW_KEY_F1;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_F2;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_F3;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_F4;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_F11;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_R;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_TAB;
 import static org.lwjgl.opengl.GL11.GL_NO_ERROR;
@@ -21,6 +22,7 @@ import com.microvoxel.phys.Player;
 import com.microvoxel.render.DebugRenderer;
 import com.microvoxel.render.Renderer;
 import com.microvoxel.scene.DemoScene;
+import com.microvoxel.scene.TerrainGenerator;
 import com.microvoxel.window.Window;
 import com.microvoxel.world.World;
 
@@ -36,9 +38,10 @@ import com.microvoxel.world.World;
  *
  * <p>
  * Controles: WASD para desplazarse, Espacio para saltar, raton para orientar la
- * camara, F1 estadisticas, F2 bordes de microvoxels, F3 limites de bloques, F4
- * modo sin colision (vuelo libre), R reaparecer, Tab capturar/liberar el cursor
- * y Escape para salir.
+ * camara, rueda del raton para subir o bajar la velocidad de vuelo libre (solo
+ * con F4 activo), F1 estadisticas, F2 bordes de microvoxels, F3 limites de
+ * bloques, F4 modo sin colision (vuelo libre), F11 pantalla completa, R
+ * reaparecer, Tab capturar/liberar el cursor y Escape para salir.
  * </p>
  *
  * <p>
@@ -124,14 +127,20 @@ public final class Engine {
         camera.setMovementSpeed(7.0f);
 
         System.out.println("Voxelite v0.1 iniciado.");
-        System.out.println("Bloques logicos: " + world.blockCount()
-                + " | resolucion: " + world.resolutionX() + "x" + world.resolutionY()
-                + "x" + world.resolutionZ());
-        System.out.println("Microvoxels almacenados: " + world.totalStoredMicroVoxels()
+        System.out.println("Mundo: resolucion " + world.resolutionX() + "x" + world.resolutionY()
+                + "x" + world.resolutionZ() + " | altura " + World.MIN_BLOCK_Y
+                + " a " + World.MAX_BUILD_BLOCK_Y);
+        System.out.println("Terreno generado por columnas: " + TerrainGenerator.generatedBlockCount()
+                + " bloques (superficie de " + TerrainGenerator.MIN_SURFACE_BLOCK_Y
+                + " a " + TerrainGenerator.MAX_SURFACE_BLOCK_Y + ", agua en "
+                + TerrainGenerator.WATER_LEVEL_BLOCK_Y + ")");
+        System.out.println("Bloques materializados: " + world.blockCount()
+                + " | microvoxels almacenados: " + world.totalStoredMicroVoxels()
                 + " | ocupados: " + world.totalOccupiedMicroVoxels());
         System.out.println("Jugador sobre la columna " + DemoScene.SPAWN_BLOCK_X + ","
                 + DemoScene.SPAWN_BLOCK_Z + " | modo: caminar con colision"
-                + " (F4 sin colision, R reaparecer)");
+                + " (F4 sin colision y rueda para la velocidad de vuelo, F11 pantalla"
+                + " completa, R reaparecer)");
     }
 
     private void loop() {
@@ -164,6 +173,9 @@ public final class Engine {
      */
     private void updateMovement(double delta) {
         if (noclip) {
+            // La rueda ajusta la velocidad de vuelo libre; se aplica antes de mover
+            // la camara para que el cambio valga ya en este fotograma.
+            camera.adjustMovementSpeed((float) input.scrollDelta());
             camera.update((float) delta, input);
             return;
         }
@@ -213,14 +225,21 @@ public final class Engine {
         if (input.wasKeyPressed(GLFW_KEY_F2)) {
             showCellBorders = !showCellBorders;
             if (showCellBorders) {
-                debugRenderer.rebuildCellBorders(scene.world());
+                // Se genera alrededor de la camara: el terreno es demasiado grande
+                // para dibujar su rejilla completa.
+                debugRenderer.rebuildCellBorders(scene.world(), camera.position());
             }
         }
         if (input.wasKeyPressed(GLFW_KEY_F3)) {
             showBlockBounds = !showBlockBounds;
             if (showBlockBounds) {
-                debugRenderer.rebuildBlockBounds(scene.world());
+                debugRenderer.rebuildBlockBounds(scene.world(), camera.position());
             }
+        }
+        if (input.wasKeyPressed(GLFW_KEY_F11)) {
+            // La ventana alterna su modo sin tocar el contexto de OpenGL: el bucle
+            // sigue con las mismas mallas y recursos.
+            window.toggleFullscreen();
         }
         if (input.wasKeyPressed(GLFW_KEY_TAB)) {
             window.toggleCursorCapture();
@@ -254,24 +273,30 @@ public final class Engine {
         return String.format(Locale.ROOT,
                 "Voxelite v0.1%n"
                         + "FPS: %.1f   Frame: %.2f ms%n"
-                        + "Blocks: %d   Resolution: %dx%dx%d%n"
-                        + "Stored microvoxels: %d%n"
-                        + "Occupied microvoxels: %d (%.1f%%)%n"
+                        + "Resolution: %dx%dx%d   World Y: %d..%d%n"
+                        + "Blocks materialized: %d   Generated: %d%n"
+                        + "Stored microvoxels (materialized): %d   Occupied: %d (%.1f%%)%n"
                         + "Mesh vertices (per-face): %d   Triangles: %d%n"
                         + "Camera: %.2f, %.2f, %.2f%n"
-                        + "Player: onGround [%s] | Mode: %s | Speed: %.2f%n"
+                        + "Player: onGround [%s] | Mode: %s | Speed: %.2f u/s%n"
                         + "F1 stats [%s] | F2 cell borders [%s] | F3 block bounds [%s] | F4 noclip [%s]%n"
-                        + "WASD move | Space jump | R respawn | Mouse look | Tab cursor [%s] | Esc quit",
+                        + "WASD move | Space jump | R respawn | Mouse look | Wheel speed (noclip)%n"
+                        + "Tab cursor [%s] | F11 fullscreen [%s] | Esc quit",
                 time.fps(), time.frameMillis(),
-                world.blockCount(), world.resolutionX(), world.resolutionY(), world.resolutionZ(),
+                world.resolutionX(), world.resolutionY(), world.resolutionZ(),
+                World.MIN_BLOCK_Y, World.MAX_BUILD_BLOCK_Y,
+                world.blockCount(), TerrainGenerator.generatedBlockCount(),
                 stored,
                 occupied, fill,
                 renderer.totalVertices(), renderer.triangleCount(),
                 camera.position().x, camera.position().y, camera.position().z,
-                onOff(player.onGround()), noclip ? "noclip" : "walk", player.speed(),
+                onOff(player.onGround()), noclip ? "noclip" : "walk",
+                // En vuelo libre el jugador no se simula: lo que informa es la velocidad
+                // de la camara, que es la que la rueda modifica.
+                noclip ? camera.movementSpeed() : player.speed(),
                 onOff(showStats), onOff(showCellBorders), onOff(showBlockBounds),
                 onOff(noclip),
-                onOff(window.isCursorCaptured()));
+                onOff(window.isCursorCaptured()), onOff(window.isFullscreen()));
     }
 
     private static String onOff(boolean value) {

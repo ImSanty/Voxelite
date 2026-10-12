@@ -23,13 +23,49 @@ import com.microvoxel.phys.AABB;
  * las fronteras entre bloques adyacentes y los bordes del mundo.</p>
  *
  * <p>La resolucion de microvoxels es una propiedad del mundo y se aplica a todos
- * los bloques. No hay chunks de mundo todavia, pero el mapa de posiciones ya deja
- * la puerta abierta a una capa de chunks posterior sin tocar la representacion
- * interna de cada bloque.</p>
+ * los bloques.</p>
+ *
+ * <p><b>Bloques materializados y bloques de fuente.</b> El mundo combina dos
+ * origenes de informacion, en este orden de prioridad:</p>
+ *
+ * <ol>
+ *   <li>Los {@link LogicalBlock} registrados: tienen forma propia (macizos,
+ *       perforados, con cavidades o editados). Son la unica cosa que se guarda en
+ *       memoria bloque a bloque.</li>
+ *   <li>La {@link BlockSource} opcional: terreno generado que <b>no</b> existe
+ *       como objetos y que el mundo deduce por columna. Sus bloques son macizos y
+ *       de un unico material.</li>
+ * </ol>
+ *
+ * <p>Todas las consultas de ocupacion (meshing y colision incluidas) pasan por
+ * {@link #materialCode(int, int, int)}, de modo que una misma respuesta sirve para
+ * dibujar, para chocar y para calcular caras: no hay dos caminos que puedan
+ * discrepar.</p>
  */
 public final class World {
 
+    /**
+     * Cota inferior del mundo, en coordenadas de bloque. Coincide con el fondo del
+     * terreno generado.
+     */
+    public static final int MIN_BLOCK_Y = -128;
+
+    /**
+     * Cota superior <b>de construccion</b>: por encima de ella el mundo no admite
+     * bloques. El terreno generado se queda bastante mas abajo (su techo de relieve
+     * es {@code TerrainGenerator.MAX_SURFACE_BLOCK_Y}), de modo que queda aire de
+     * sobra para construir.
+     */
+    public static final int MAX_BUILD_BLOCK_Y = 512;
+
     private final Map<BlockPosition, LogicalBlock> blocks = new LinkedHashMap<>();
+
+    /**
+     * Terreno generado por debajo de los bloques registrados, o {@code null} si el
+     * mundo solo tiene bloques materializados (los mundos de las pruebas, por
+     * ejemplo).
+     */
+    private BlockSource blockSource;
     /**
      * Vista lineal de los bloques, en orden de alta. El mapa mantiene la busqueda
      * por posicion; esta lista evita recorrer la tabla hash en los bucles que se
@@ -94,12 +130,26 @@ public final class World {
     // Registro de bloques.
     // ------------------------------------------------------------------
 
+    // ------------------------------------------------------------------
+    // Fuente de bloques no materializados (terreno generado).
+    // ------------------------------------------------------------------
+
+    /** Instala la fuente de bloques del terreno generado. */
+    public void setBlockSource(BlockSource source) {
+        this.blockSource = source;
+    }
+
+    public BlockSource blockSource() {
+        return blockSource;
+    }
+
     /** Crea y registra un bloque vacio en una posicion. */
     public LogicalBlock addBlock(int x, int y, int z) {
         return addBlock(new BlockPosition(x, y, z));
     }
 
     public LogicalBlock addBlock(BlockPosition position) {
+        checkBounds(position);
         if (blocks.containsKey(position)) {
             throw new IllegalArgumentException("Ya existe un bloque en " + position);
         }
@@ -119,6 +169,7 @@ public final class World {
                             + block.resX() + "x" + block.resY() + "x" + block.resZ()
                             + " y el mundo usa " + resolutionX + "x" + resolutionY + "x" + resolutionZ);
         }
+        checkBounds(block.position());
         if (blocks.containsKey(block.position())) {
             throw new IllegalArgumentException("Ya existe un bloque en " + block.position());
         }
@@ -185,8 +236,24 @@ public final class World {
         return Collections.unmodifiableList(looseBlocks);
     }
 
+    /** Numero de bloques <b>materializados</b> (los que ocupan memoria). */
     public int blockCount() {
         return blocks.size();
+    }
+
+    /**
+     * Comprueba que una posicion cae dentro de las cotas del mundo.
+     *
+     * @throws IllegalArgumentException si la altura queda fuera de
+     *         {@code [MIN_BLOCK_Y, MAX_BUILD_BLOCK_Y]}
+     */
+    private static void checkBounds(BlockPosition position) {
+        if (position.y() < MIN_BLOCK_Y || position.y() > MAX_BUILD_BLOCK_Y) {
+            throw new IllegalArgumentException(
+                    "Altura fuera del mundo: y = " + position.y()
+                            + " (el mundo va de y = " + MIN_BLOCK_Y
+                            + " a y = " + MAX_BUILD_BLOCK_Y + ")");
+        }
     }
 
     public void removeBlock(BlockPosition position) {
@@ -211,10 +278,12 @@ public final class World {
     public int getMaterialGlobal(int gx, int gy, int gz) {
         BlockPosition bp = BlockPosition.ofGlobalMicroVoxel(gx, gy, gz, resolutionX, resolutionY, resolutionZ);
         LogicalBlock block = blocks.get(bp);
-        if (block == null) {
-            return 0;
+        if (block != null) {
+            return block.getMaterialGlobal(gx, gy, gz);
         }
-        return block.getMaterialGlobal(gx, gy, gz);
+        // Bloque no materializado: la fuente responde por bloques completos, asi
+        // que su material vale para cualquier celda de este.
+        return blockSource != null ? materialCodeFromSource(bp) : 0;
     }
 
     public boolean isOccupiedGlobal(int gx, int gy, int gz) {
@@ -222,11 +291,49 @@ public final class World {
     }
 
     /**
-     * Numero total de microvoxels almacenados (celdas de todas las grillas).
-     * Coste constante: el total se mantiene al registrar y retirar bloques.
+     * Numero total de microvoxels almacenados <b>en memoria</b> (celdas de todas
+     * las grillas materializadas). Coste constante: el total se mantiene al
+     * registrar y retirar bloques.
      */
     public long totalStoredMicroVoxels() {
         return storedMicroVoxels;
+    }
+
+    /**
+     * Material de un bloque, sin materializarlo.
+     *
+     * <p>Es <b>la</b> consulta de bloques del mundo: la usan el generador de malla,
+     * la colision y las estadisticas, de modo que no puede haber dos respuestas
+     * distintas sobre si un bloque existe.</p>
+     *
+     * @return {@code 0} si el bloque es aire, el identificador de material si es
+     *         macizo y uniforme, y {@code -1} si es un bloque materializado con
+     *         forma propia (perforado, con cavidades o editado)
+     */
+    public int materialCode(int blockX, int blockY, int blockZ) {
+        if (!blocks.isEmpty()) {
+            LogicalBlock block = blocks.get(new BlockPosition(blockX, blockY, blockZ));
+            if (block != null) {
+                return block.uniformMaterial();
+            }
+        }
+        return blockSource != null ? materialCodeFromSource(blockX, blockY, blockZ) : 0;
+    }
+
+    /** {@code true} si el bloque existe y frena al jugador. */
+    public boolean isSolidBlock(int blockX, int blockY, int blockZ) {
+        return isSolidMaterial(materialCode(blockX, blockY, blockZ));
+    }
+
+    private int materialCodeFromSource(int blockX, int blockY, int blockZ) {
+        if (blockY < MIN_BLOCK_Y || blockY > MAX_BUILD_BLOCK_Y) {
+            return 0;
+        }
+        return blockSource.materialAt(blockX, blockY, blockZ);
+    }
+
+    private int materialCodeFromSource(BlockPosition position) {
+        return materialCodeFromSource(position.x(), position.y(), position.z());
     }
 
     /** Numero total de microvoxels ocupados. */
@@ -262,8 +369,10 @@ public final class World {
      *
      * <ul>
      *   <li>Un bloque macizo y uniforme de material solido (el caso de todo el
-     *       terreno) aporta <b>un unico cubo</b> de una unidad: es equivalente al
-     *       barrido y evita generar 4.096 cajas de 1/16.</li>
+     *       terreno, materializado o no) aporta <b>un unico cubo</b> de una unidad:
+     *       es equivalente al barrido y evita generar 4.096 cajas de 1/16. La
+     *       consulta pasa por {@link #materialCode(int, int, int)}, de modo que el
+     *       jugador choca contra la roca generada aunque no exista como objeto.</li>
      *   <li>Un bloque con forma (tuneles, cavidades, jaulas, escaleras de la
      *       escena) aporta <b>una caja de 1/16 por celda ocupada</b> dentro de la
      *       region, de modo que la colision respeta la subdivison real.</li>
@@ -294,17 +403,13 @@ public final class World {
         for (int bz = minBz; bz <= maxBz; bz++) {
             for (int by = minBy; by <= maxBy; by++) {
                 for (int bx = minBx; bx <= maxBx; bx++) {
-                    LogicalBlock block = blocks.get(new BlockPosition(bx, by, bz));
-                    if (block == null) {
-                        continue;
-                    }
-                    int uniform = block.uniformMaterial();
-                    if (uniform > 0) {
-                        if (isSolidMaterial(uniform)) {
+                    int code = materialCode(bx, by, bz);
+                    if (code > 0) {
+                        if (isSolidMaterial(code)) {
                             cubes.add(new AABB(bx, by, bz, bx + 1, by + 1, bz + 1));
                         }
-                    } else if (uniform < 0) {
-                        appendMicroCubes(block, region, cubes);
+                    } else if (code < 0) {
+                        appendMicroCubes(blocks.get(new BlockPosition(bx, by, bz)), region, cubes);
                     }
                 }
             }

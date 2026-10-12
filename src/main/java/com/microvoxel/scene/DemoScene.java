@@ -30,24 +30,32 @@ import com.microvoxel.world.World;
  * <p>Los bloques se disponen en una cuadricula 3x3 con una unidad de separacion
  * para poder observarlos comodamente desde la posicion inicial de la camara.</p>
  *
- * <p>Ademas, la escena incorpora un terreno fijo de 8x8 chunks (64 chunks de
- * 16x16x16 bloques) construido por {@link TerrainBuilder}. Cada bloque del
- * terreno es un cubo macizo de 16x16x16 microvoxels. El terreno ocupa desde
- * {@code y = 0} hacia arriba ({@value TerrainBuilder#LAYERS} bloques de altura),
- * de modo que estos bloques de demostracion se generan por encima de el, en
- * {@code y = }{@value #DEMO_BLOCK_Y}.</p>
+ * <p>Ademas, la escena incorpora un terreno generado por {@link TerrainGenerator}:
+ * 8x8 chunks de 16x16 columnas, de {@value TerrainGenerator#MIN_BLOCK_Y} a
+ * {@value TerrainGenerator#MAX_SURFACE_BLOCK_Y} en Y. Ese terreno <b>no existe
+ * como bloques</b> (se deduce por columna), de modo que los unicos bloques
+ * materializados son los de demostracion, que se colocan por encima del relieve
+ * local en {@code y = }{@value #DEMO_BLOCK_Y}.</p>
  */
 public final class DemoScene {
 
     /** Resolucion por defecto de los bloques de la escena. */
     public static final int DEFAULT_RESOLUTION = 16;
 
-    /** Capa de bloque en la que se colocan los bloques de demostracion (sobre el terreno). */
-    public static final int DEMO_BLOCK_Y = TerrainBuilder.BASE_BLOCK_Y + TerrainBuilder.LAYERS;
+    /**
+     * Capa de bloque en la que se colocan los bloques de demostracion: una unidad
+     * por encima del punto mas alto del terreno bajo su huella.
+     *
+     * <p>Se deduce del relieve, nunca se fija a mano: si la superficie subiera, los
+     * bloques de demostracion quedarian enterrados dentro de la montana.</p>
+     */
+    public static final int DEMO_BLOCK_Y = TerrainGenerator.maxSurfaceTop(0, 5, 0, 5) + 1;
 
     /**
-     * Columna del terreno en la que aparece el jugador. Es una columna de cesped
-     * por encima del nivel del agua, a media distancia de los bloques demo.
+     * Columna preferida para la aparicion del jugador. Debe ser una columna de
+     * cesped por encima del nivel del agua, a media distancia de los bloques demo;
+     * si el relieve deja esa columna inundada, se busca la primera columna valida
+     * alrededor ({@link #findSpawnColumn()}).
      */
     public static final int SPAWN_BLOCK_X = 16;
     public static final int SPAWN_BLOCK_Z = 16;
@@ -66,9 +74,9 @@ public final class DemoScene {
     }
 
     private void build() {
-        // Terreno fijo de 8x8 chunks (64 chunks de 16x16x16 bloques) desde y = 0
-        // hacia arriba. Los bloques de demostracion se generan por encima.
-        TerrainBuilder.build(world);
+        // Terreno por columnas de 8x8 chunks desde y = -128 hasta el relieve, sin
+        // materializar un solo bloque. Los bloques de demostracion, encima.
+        TerrainGenerator.build(world);
 
         // Fila z = 0.
         solidBlock(0, DEMO_BLOCK_Y, 0);
@@ -175,9 +183,38 @@ public final class DemoScene {
      * valido si el relieve cambia, y el agua nunca se toma como suelo.</p>
      */
     public Vector3f playerSpawn() {
-        float surface = highestSolidSurface(SPAWN_BLOCK_X, SPAWN_BLOCK_Z);
+        int[] column = findSpawnColumn();
+        float surface = highestSolidSurface(column[0], column[1]);
         float eye = (float) (surface + (double) Player.EYE_HEIGHT + SPAWN_CLEARANCE);
-        return new Vector3f(SPAWN_BLOCK_X + 0.5f, eye, SPAWN_BLOCK_Z + 0.5f);
+        return new Vector3f(column[0] + 0.5f, eye, column[1] + 0.5f);
+    }
+
+    /**
+     * Columna de aparicion: la preferida si su superficie esta por encima del agua,
+     * o la primera columna valida alrededor, en anillos crecientes.
+     *
+     * <p>Es determinista y no depende de mirar el mundo: la decision sale del
+     * relieve, de modo que el spawn sigue siendo valido si el terreno cambia.</p>
+     */
+    public static int[] findSpawnColumn() {
+        for (int radius = 0; radius < 32; radius++) {
+            for (int dx = -radius; dx <= radius; dx++) {
+                for (int dz = -radius; dz <= radius; dz++) {
+                    if (Math.max(Math.abs(dx), Math.abs(dz)) != radius) {
+                        continue; // solo el anillo
+                    }
+                    int x = SPAWN_BLOCK_X + dx;
+                    int z = SPAWN_BLOCK_Z + dz;
+                    if (!TerrainGenerator.insideFootprint(x, z)) {
+                        continue;
+                    }
+                    if (TerrainGenerator.surfaceTop(x, z) > TerrainGenerator.WATER_LEVEL_BLOCK_Y + 1) {
+                        return new int[] { x, z };
+                    }
+                }
+            }
+        }
+        return new int[] { SPAWN_BLOCK_X, SPAWN_BLOCK_Z };
     }
 
     /** Punto al que mira el jugador al arrancar: el centro de los bloques de demostracion. */
@@ -187,19 +224,20 @@ public final class DemoScene {
 
     /**
      * Altura (en unidades de mundo) de la cara superior del bloque solido mas
-     * alto de una columna, o {@code 0} si la columna esta vacia.
+     * alto de una columna, o {@code TerrainGenerator.MIN_BLOCK_Y} si no hay.
+     *
+     * <p>Se consulta al mundo, no a los bloques: asi sirve igual para el terreno
+     * generado (que no existe como objetos) que para los bloques materializados.</p>
      */
     private float highestSolidSurface(int blockX, int blockZ) {
-        for (int by = DEMO_BLOCK_Y - 1; by >= 0; by--) {
-            LogicalBlock block = world.getBlock(blockX, by, blockZ);
-            if (block == null) {
-                continue;
-            }
-            int material = block.uniformMaterial();
+        // Se busca de arriba abajo hasta el fondo del mundo: el terreno puede
+        // empezar por debajo de cero.
+        for (int by = TerrainGenerator.MAX_SURFACE_BLOCK_Y; by >= TerrainGenerator.MIN_BLOCK_Y; by--) {
+            int material = world.materialCode(blockX, by, blockZ);
             if (material > 0 && world.isSolidMaterial(material)) {
                 return by + 1.0f;
             }
         }
-        return 0.0f;
+        return TerrainGenerator.MIN_BLOCK_Y;
     }
 }

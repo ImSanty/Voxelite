@@ -22,7 +22,17 @@ import java.util.List;
  * <p>
  * Los bloques de un chunk viven en el {@link World} como cualquier otro bloque
  * (el mundo sigue siendo la autoridad de ocupacion global). El chunk solo
- * mantiene la lista de los que le pertenecen.
+ * mantiene la lista de los que le pertenecen: los <b>materializados</b>, que son
+ * los editados y los de la escena de demostracion. El terreno generado no crea
+ * bloques, asi que un chunk de terreno normal esta <b>vacio</b>.
+ * </p>
+ *
+ * <p>
+ * Un chunk tambien guarda la <b>banda vertical</b> que su malla necesita
+ * ({@link #bandMinBlockY()} - {@link #bandMaxBlockY()}). Se calcula al generar la
+ * malla (a partir del relieve y de los bloques que contiene) y sirve para dos
+ * cosas: acotar el recorrido del generador de malla y decidir el descarte por
+ * frustum sin tocar la malla.
  * </p>
  */
 public final class Chunk {
@@ -38,6 +48,13 @@ public final class Chunk {
     private final int chunkY;
     private final int chunkZ;
     private final List<LogicalBlock> blocks = new ArrayList<>();
+
+    /** Banda vertical de la malla, en coordenadas de bloque (inclusiva). */
+    private int bandMinBlockY;
+    private int bandMaxBlockY;
+
+    /** Marca de reconstruccion propia: una edicion puede afectar a la banda. */
+    private boolean dirty = true;
 
     public Chunk(int chunkX, int chunkY, int chunkZ) {
         this.chunkX = chunkX;
@@ -73,6 +90,43 @@ public final class Chunk {
         return blocks.size();
     }
 
+    /** {@code true} si el chunk guarda bloques materializados (editados o demo). */
+    public boolean hasMaterializedBlocks() {
+        return !blocks.isEmpty();
+    }
+
+    // ------------------------------------------------------------------
+    // Banda vertical de la malla.
+    // ------------------------------------------------------------------
+
+    /** Limite inferior (inclusive) de la banda que hay que mallar. */
+    public int bandMinBlockY() {
+        return bandMinBlockY;
+    }
+
+    /** Limite superior (inclusive) de la banda que hay que mallar. */
+    public int bandMaxBlockY() {
+        return bandMaxBlockY;
+    }
+
+    /** Fija la banda vertical que la malla de este chunk cubre. */
+    public void setBand(int minBlockY, int maxBlockY) {
+        this.bandMinBlockY = minBlockY;
+        this.bandMaxBlockY = maxBlockY;
+    }
+
+    public boolean isDirty() {
+        return dirty;
+    }
+
+    public void markDirty() {
+        dirty = true;
+    }
+
+    public void markClean() {
+        dirty = false;
+    }
+
     // ------------------------------------------------------------------
     // Limites espaciales del chunk en unidades de mundo (bloques unitarios).
     // ------------------------------------------------------------------
@@ -85,12 +139,14 @@ public final class Chunk {
         return (chunkX + 1) * BLOCKS_X;
     }
 
+    /** Altura minima del chunk: el fondo de su banda de malla. */
     public float minWorldY() {
-        return chunkY * BLOCKS_Y;
+        return bandMinBlockY;
     }
 
+    /** Altura maxima del chunk: el techo de su banda de malla. */
     public float maxWorldY() {
-        return (chunkY + 1) * BLOCKS_Y;
+        return bandMaxBlockY + 1.0f;
     }
 
     public float minWorldZ() {

@@ -24,6 +24,10 @@ public final class LogicalBlock {
     /** Marca de reconstruccion: la malla se regenera solo cuando los datos cambian. */
     private boolean dirty = true;
 
+    /** Clasificacion cacheada de la grilla y version de la que procede. */
+    private int uniformCode;
+    private int uniformVersion = -1;
+
     public LogicalBlock(BlockPosition position, MicroVoxelGrid grid) {
         if (position == null) {
             throw new IllegalArgumentException("El bloque necesita una posicion");
@@ -91,6 +95,19 @@ public final class LogicalBlock {
      * </ul>
      */
     public int uniformMaterial() {
+        // La clasificacion recorre las 4.096 celdas, asi que se cachea y solo se
+        // recalcula cuando la grilla cambia de version. Es la consulta mas repetida
+        // del generador de malla y de la colision: sin cache, remallar un chunk
+        // costaba mas en clasificar que en emitir caras.
+        int version = grid.version();
+        if (uniformVersion != version) {
+            uniformCode = classify();
+            uniformVersion = version;
+        }
+        return uniformCode;
+    }
+
+    private int classify() {
         byte[] cells = grid.rawCells();
         if (cells.length == 0) {
             return 0;

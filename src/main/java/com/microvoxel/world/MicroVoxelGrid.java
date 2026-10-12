@@ -32,6 +32,13 @@ public final class MicroVoxelGrid {
      */
     private int occupiedCount;
 
+    /**
+     * Contador que cambia con cada escritura. Permite que quien cachee una
+     * clasificacion de la grilla (por ejemplo "maciza y uniforme") sepa si sigue
+     * siendo valida sin recorrer las celdas.
+     */
+    private int version;
+
     public MicroVoxelGrid(int sizeX, int sizeY, int sizeZ) {
         if (sizeX <= 0 || sizeY <= 0 || sizeZ <= 0) {
             throw new IllegalArgumentException(
@@ -67,6 +74,16 @@ public final class MicroVoxelGrid {
     /** Numero total de celdas almacenadas (ocupadas o no). */
     public int cellCount() {
         return cells.length;
+    }
+
+    /**
+     * Version de los datos: cambia con cada escritura.
+     *
+     * <p>Es la senal barata de "los datos cambiaron" para las clasificaciones
+     * cacheadas, sin tener que comparar las celdas.</p>
+     */
+    public int version() {
+        return version;
     }
 
     /** Comprueba si una coordenada local cae dentro de la grilla. */
@@ -122,6 +139,7 @@ public final class MicroVoxelGrid {
             occupiedCount--;
         }
         cells[i] = nuevo;
+        version++;
     }
 
     public void clear(int x, int y, int z) {
@@ -130,12 +148,14 @@ public final class MicroVoxelGrid {
             cells[i] = 0;
             occupiedCount--;
         }
+        version++;
     }
 
     /** Vacia toda la grilla. */
     public void clearAll() {
         java.util.Arrays.fill(cells, (byte) 0);
         occupiedCount = 0;
+        version++;
     }
 
     /**
@@ -162,6 +182,7 @@ public final class MicroVoxelGrid {
                 }
             }
         }
+        version++;
         return written;
     }
 
@@ -184,6 +205,7 @@ public final class MicroVoxelGrid {
             }
         }
         occupiedCount -= cleared;
+        version++;
         return cleared;
     }
 
@@ -194,6 +216,7 @@ public final class MicroVoxelGrid {
         }
         java.util.Arrays.fill(cells, (byte) materialId);
         occupiedCount = materialId == 0 ? 0 : cells.length;
+        version++;
     }
 
     /**

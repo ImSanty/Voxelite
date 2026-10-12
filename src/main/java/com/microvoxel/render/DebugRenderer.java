@@ -6,10 +6,13 @@ import static org.lwjgl.opengl.GL11.glEnable;
 import static org.lwjgl.opengl.GL11.glLineWidth;
 import static org.lwjgl.opengl.GL11.GL_CULL_FACE;
 
+import org.joml.Vector3f;
+
 import com.microvoxel.camera.Camera;
 import com.microvoxel.mesh.LineData;
 import com.microvoxel.mesh.LineData.Builder;
 import com.microvoxel.mesh.MicroVoxelMeshBuilder;
+import com.microvoxel.world.BlockPosition;
 import com.microvoxel.world.LogicalBlock;
 import com.microvoxel.world.World;
 
@@ -36,6 +39,13 @@ import com.microvoxel.world.World;
  */
 public final class DebugRenderer {
 
+    /**
+     * Radio, en bloques, que cubre el modo de depuracion alrededor de la camara.
+     * Sustituye al recorrido completo del mundo, imposible con un terreno de 192
+     * capas: serian cientos de miles de lineas por fotograma.
+     */
+    public static final int DEBUG_RADIUS = 16;
+
     private static final float CELL_BORDER_R = 0.10f;
     private static final float CELL_BORDER_G = 1.00f;
     private static final float CELL_BORDER_B = 0.65f;
@@ -52,22 +62,58 @@ public final class DebugRenderer {
         debugShader = ShaderProgram.fromResources("debug", "debug.vert", "debug.frag");
     }
 
-    /** Regenera la rejilla de bordes de celda visibles de todos los bloques. */
-    public void rebuildCellBorders(World world) {
+    /**
+     * Regenera la rejilla de bordes de celda visibles alrededor de un punto.
+     *
+     * <p>Cubre los bloques materializados (escena de demostracion, ediciones) y la
+     * superficie del terreno generado dentro de {@value #DEBUG_RADIUS} bloques del
+     * punto: con el mundo entero serian cientos de miles de lineas y el modo de
+     * depuracion dejaria de ser util (y de ser instantaneo).</p>
+     */
+    public void rebuildCellBorders(World world, Vector3f focus) {
         Builder builder = new Builder();
         for (LogicalBlock block : world.blocks()) {
-            MicroVoxelMeshBuilder.appendCellBorders(world, block, builder);
+            if (withinRadius(block.position(), focus)) {
+                MicroVoxelMeshBuilder.appendCellBorders(world, block, builder);
+            }
         }
+        MicroVoxelMeshBuilder.appendSurfaceCellBorders(world, minX(focus), minZ(focus),
+                maxX(focus), maxZ(focus), builder);
         replaceCellBorders(builder.build());
     }
 
-    /** Regenera las cajas de los limites de todos los bloques logicos. */
-    public void rebuildBlockBounds(World world) {
+    /** Regenera las cajas de los limites visibles alrededor de un punto. */
+    public void rebuildBlockBounds(World world, Vector3f focus) {
         Builder builder = new Builder();
         for (LogicalBlock block : world.blocks()) {
-            MicroVoxelMeshBuilder.appendBlockBounds(block, builder);
+            if (withinRadius(block.position(), focus)) {
+                MicroVoxelMeshBuilder.appendBlockBounds(block, builder);
+            }
         }
+        MicroVoxelMeshBuilder.appendSurfaceBlockBounds(world, minX(focus), minZ(focus),
+                maxX(focus), maxZ(focus), builder);
         replaceBlockBounds(builder.build());
+    }
+
+    private static boolean withinRadius(BlockPosition position, Vector3f focus) {
+        return position.x() >= minX(focus) && position.x() <= maxX(focus)
+                && position.z() >= minZ(focus) && position.z() <= maxZ(focus);
+    }
+
+    private static int minX(Vector3f focus) {
+        return (int) Math.floor(focus.x) - DEBUG_RADIUS;
+    }
+
+    private static int maxX(Vector3f focus) {
+        return (int) Math.floor(focus.x) + DEBUG_RADIUS;
+    }
+
+    private static int minZ(Vector3f focus) {
+        return (int) Math.floor(focus.z) - DEBUG_RADIUS;
+    }
+
+    private static int maxZ(Vector3f focus) {
+        return (int) Math.floor(focus.z) + DEBUG_RADIUS;
     }
 
     private void replaceCellBorders(LineData data) {
