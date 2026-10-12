@@ -23,6 +23,12 @@ import com.microvoxel.input.Input;
  * </p>
  *
  * <p>
+ * La velocidad de desplazamiento se ajusta con la rueda del raton
+ * ({@link #adjustMovementSpeed}), de modo que la camara libre sirve tanto para
+ * avanzar rapido sobre el terreno como para acercarse despacio a un detalle.
+ * </p>
+ *
+ * <p>
  * La orientacion se parametriza con {@code yaw} (giro alrededor de Y) y
  * {@code pitch} (inclinacion alrededor de X), ambos en grados. El vector
  * frontal
@@ -43,6 +49,15 @@ public final class Camera {
     private static final float FOV_DEGREES = 75.0f;
     private static final float NEAR_PLANE = 0.05f;
     private static final float FAR_PLANE = 1000.0f;
+
+    /** Factor multiplicativo de velocidad por muesca de la rueda del raton. */
+    public static final float SPEED_SCROLL_STEP = 1.25f;
+
+    /** Velocidad minima de la camara libre: giros adicionales hacia abajo ya no la bajan. */
+    public static final float MIN_MOVEMENT_SPEED = 0.5f;
+
+    /** Velocidad maxima de la camara libre: giros adicionales hacia arriba ya no la suben. */
+    public static final float MAX_MOVEMENT_SPEED = 200.0f;
 
     private final Vector3f position = new Vector3f(0.0f, 0.0f, 0.0f);
     private float yaw = 0.0f;
@@ -191,5 +206,37 @@ public final class Camera {
 
     public void setMovementSpeed(float speed) {
         this.movementSpeed = speed;
+    }
+
+    /** Velocidad de desplazamiento actual, en unidades de mundo por segundo. */
+    public float movementSpeed() {
+        return movementSpeed;
+    }
+
+    /**
+     * Ajusta la velocidad de desplazamiento con la rueda del raton.
+     *
+     * <p>El ajuste es multiplicativo: {@code notches} muescas hacia arriba suben la
+     * velocidad por {@link #SPEED_SCROLL_STEP} elevado a {@code notches}, y hacia
+     * abajo la bajan en la misma proporcion. Al ser proporcional, el cambio es fino
+     * cuando la camara va despacio y amplio cuando ya va rapida, y una rueda de alta
+     * resolucion (incrementos fraccionarios) produce un ajuste continuo.</p>
+     *
+     * <p>La velocidad queda dentro de [{@link #MIN_MOVEMENT_SPEED},
+     * {@link #MAX_MOVEMENT_SPEED}] para que la camara ni se quede clavada ni cruce el
+     * mundo de un fotograma al siguiente.</p>
+     *
+     * @param notches muescas giradas en este fotograma (positivo = acelerar)
+     */
+    public void adjustMovementSpeed(float notches) {
+        if (notches == 0.0f || Float.isNaN(notches)) {
+            return;
+        }
+        double scaled = movementSpeed * Math.pow(SPEED_SCROLL_STEP, notches);
+        if (Double.isNaN(scaled)) {
+            return;
+        }
+        movementSpeed = (float) Math.max(MIN_MOVEMENT_SPEED,
+                Math.min(MAX_MOVEMENT_SPEED, scaled));
     }
 }

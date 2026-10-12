@@ -132,6 +132,82 @@ class CameraTest {
     }
 
     @Test
+    void laRuedaSubeYbajaLaVelocidadDeLaCamaraLibre() {
+        Camera camera = new Camera();
+        float inicial = camera.movementSpeed();
+        assertTrue(inicial > 0.0f);
+
+        camera.adjustMovementSpeed(1.0f);
+        assertEquals(inicial * Camera.SPEED_SCROLL_STEP, camera.movementSpeed(), EPS,
+                "Una muesca hacia arriba debe acelerar en la proporcion esperada");
+
+        camera.adjustMovementSpeed(-1.0f);
+        assertEquals(inicial, camera.movementSpeed(), EPS,
+                "Una muesca hacia abajo debe deshacer la de arriba");
+
+        // Una muesca hacia abajo siempre frena, aunque haya muchas acumuladas.
+        camera.adjustMovementSpeed(3.0f);
+        float rapida = camera.movementSpeed();
+        camera.adjustMovementSpeed(-1.0f);
+        assertTrue(camera.movementSpeed() < rapida);
+    }
+
+    @Test
+    void laVelocidadDeLaCamaraLibreSeMantieneDentroDeLosLimites() {
+        Camera camera = new Camera();
+
+        for (int i = 0; i < 200; i++) {
+            camera.adjustMovementSpeed(1.0f);
+        }
+        assertEquals(Camera.MAX_MOVEMENT_SPEED, camera.movementSpeed(), EPS,
+                "Muchas muescas hacia arriba no deben superar el maximo");
+
+        for (int i = 0; i < 400; i++) {
+            camera.adjustMovementSpeed(-1.0f);
+        }
+        assertEquals(Camera.MIN_MOVEMENT_SPEED, camera.movementSpeed(), EPS,
+                "Muchas muescas hacia abajo no deben llegar a cero ni a velocidad negativa");
+    }
+
+    @Test
+    void elGiroDeLaRuedaCambiaElDesplazamientoRealDeLaCamaraLibre() {
+        // Reproduce el orden del motor en modo sin colision: la rueda ajusta la
+        // velocidad y despues la camara se desplaza con las teclas. Asi se comprueba
+        // el efecto visible del ajuste y no solo el numero de velocidad.
+        Input sinRueda = new Input();
+        sinRueda.onKey(org.lwjgl.glfw.GLFW.GLFW_KEY_W, org.lwjgl.glfw.GLFW.GLFW_PRESS);
+        Camera base = new Camera();
+        base.setPosition(0.0f, 0.0f, 0.0f);
+        base.update(1.0f, sinRueda);
+        assertEquals(base.movementSpeed(), base.position().z, EPS,
+                "Un segundo de avance debe recorrer una velocidad entera de mundo");
+
+        Input conRueda = new Input();
+        conRueda.onKey(org.lwjgl.glfw.GLFW.GLFW_KEY_W, org.lwjgl.glfw.GLFW.GLFW_PRESS);
+        conRueda.onScroll(3.0);
+        Camera rapida = new Camera();
+        rapida.setPosition(0.0f, 0.0f, 0.0f);
+        rapida.adjustMovementSpeed((float) conRueda.scrollDelta());
+        rapida.update(1.0f, conRueda);
+
+        assertEquals(rapida.movementSpeed(), rapida.position().z, EPS);
+        assertEquals((float) Math.pow(Camera.SPEED_SCROLL_STEP, 3.0) * base.position().z,
+                rapida.position().z, 1e-2f,
+                "Tres muescas hacia arriba deben triplicar de largo el avance, no un poco mas");
+        assertTrue(rapida.position().z > base.position().z);
+
+        // Hacia abajo el desplazamiento se acorta.
+        Input lenta = new Input();
+        lenta.onKey(org.lwjgl.glfw.GLFW.GLFW_KEY_W, org.lwjgl.glfw.GLFW.GLFW_PRESS);
+        lenta.onScroll(-3.0);
+        Camera despacio = new Camera();
+        despacio.setPosition(0.0f, 0.0f, 0.0f);
+        despacio.adjustMovementSpeed((float) lenta.scrollDelta());
+        despacio.update(1.0f, lenta);
+        assertTrue(despacio.position().z < base.position().z);
+    }
+
+    @Test
     void elPitchSeLimitaParaEvitarVoltearLaCamara() {
         Camera camera = new Camera();
         camera.setPosition(0, 0, 0);
