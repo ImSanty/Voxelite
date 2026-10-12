@@ -18,17 +18,16 @@ La escena de demostración construye cada forma escribiendo y vaciando celdas
 (cavidades, túneles, arcos, escaleras, componentes separados, materiales
 combinados) y demuestra que el motor no asume bloques sólidos.
 
-Además, la misma escena incluye un **terreno fijo de 8×8 chunks** (64 chunks).
-Cada chunk es una cuadrícula de **16×16×16 bloques lógicos**, y cada bloque del
-terreno es un **cubo macizo de 16×16×16 microvoxels de un único material**, al
-estilo de un bloque de Minecraft. El terreno completo mide **128×128 bloques de
-ancho por 16 bloques de alto** y se genera **desde `y = 0` hacia arriba**; los
-bloques de demostración se colocan por encima de él. La altura se calcula **por
-bloque**, no por microvoxel, de modo que el relieve se cuantiza a la rejilla de
-bloques. Su relieve es **determinista** (ruido de valor con semilla constante, no
-procedural) y combina varios tipos de bloque: césped en la superficie, tierra
-debajo, piedra en el interior, arena en las orillas y agua en los lagos de los
-valles.
+Además, la misma escena incluye un **terreno de 8×8 chunks** (128×128 columnas
+de bloques) que va **de `y = -128` a `y = 64`** y que **no existe como bloques**:
+solo se guarda la altura de cada columna (64 KB) y la forma se deduce de ella.
+Cada bloque del terreno es un **cubo macizo de 16×16×16 microvoxels de un único
+material**, al estilo de un bloque de Minecraft, y su relieve es **determinista**
+(ruido de valor con semilla constante): césped en la superficie, tierra debajo,
+piedra hasta el fondo, arena en las orillas y agua en los lagos de los valles.
+Por encima de `y = 64` el mundo sigue siendo aire disponible **hasta `y = 512`**,
+la cota de construcción. Los bloques de demostración se colocan justo encima del
+relieve local.
 
 El jugador aparece **de pie sobre ese terreno** y se mueve con gravedad, salto y
 **colisión por microvoxel** contra los bloques sólidos: el sistema de colisión se
@@ -137,10 +136,12 @@ exclusivamente ASCII esa línea no es necesaria.
 | `Espacio` | Saltar (solo con los pies en el suelo) |
 | `Espacio` / `Shift` | Subir / bajar (solo en modo sin colisión) |
 | Ratón | Orientar la cámara (primera persona) |
+| Rueda del ratón | Subir / bajar la velocidad de desplazamiento (solo en modo sin colisión) |
 | `F1` | Mostrar u ocultar las estadísticas |
-| `F2` | Bordes de los microvoxels de las caras visibles |
-| `F3` | Límites (caja) de los bloques lógicos |
+| `F2` | Bordes de los microvoxels de las caras visibles (radio de 16 bloques) |
+| `F3` | Límites (caja) de los bloques lógicos (radio de 16 bloques) |
 | `F4` | Modo sin colisión (vuelo libre, para inspeccionar el terreno) |
+| `F11` | Alternar ventana / pantalla completa |
 | `R` | Reaparecer sobre el terreno |
 | `Tab` | Capturar / liberar el cursor |
 | `Escape` | Cerrar la aplicación |
@@ -150,6 +151,24 @@ colisión contra los bloques sólidos (ver *Colisión*). En modo sin colisión
 (`F4`) el movimiento depende del tiempo transcurrido por fotograma y la cámara
 atraviesa la geometría, como antes, para revisar túneles y cavidades desde
 dentro.
+
+En ese modo, la **rueda del ratón** sube o baja la velocidad de vuelo: cada
+muesca hacia arriba multiplica por `1,25` y hacia abajo divide en la misma
+proporción, de modo que el ajuste es fino a poca velocidad y amplio cuando la
+cámara ya corre. La velocidad queda acotada entre `0,5` y `200` unidades por
+segundo, y en las ruedas de alta resolución (incrementos fraccionarios) el
+ajuste es continuo. El valor actual aparece en las estadísticas (`F1`) en la
+línea *Player*, que en vuelo libre informa de la velocidad de la cámara. La
+rueda no hace nada al caminar con colisión, y se ignora mientras el cursor está
+liberado (`Tab`), igual que el giro de la cámara.
+
+`F11` alterna **ventana y pantalla completa**. Al entrar se adopta el modo de
+vídeo del monitor sobre el que está la ventana (no siempre el principal, para no
+saltar de monitor) y se recuerdan su posición y su tamaño; al salir se restauran
+exactamente. El contexto de OpenGL no se recrea, así que el cambio no cuesta
+ninguna recarga de mallas ni de recursos. La aplicación arranca en ventana
+(1280×720), a diferencia de rd-161348, que arrancaba directamente a pantalla
+completa (`FULLSCREEN_MODE = true`).
 
 ---
 
@@ -163,11 +182,19 @@ dentro.
   `index = x + sizeX * (y + sizeY * z)`. La resolución es un parámetro del
   constructor, nunca está fijada a 16.
 - **`LogicalBlock`**: posición, grilla interna, límites en unidades de mundo,
-  consulta/edición de microvoxels y marca de reconstrucción (*dirty*).
-- **`World`**: registro de bloques y **autoridad** para responder qué hay en una
+  consulta/edición de microvoxels y marca de reconstrucción (*dirty*).- **`World`**: registro de bloques y **autoridad** para responder qué hay en una
   coordenada global de microvoxel. Esta es la pieza que unifica el *culling* de
   caras internas, las fronteras entre bloques y los bordes del mundo: el exterior
-  del mundo se considera aire.
+  del mundo se considera aire. El mundo combina **dos orígenes**, en este orden de
+  prioridad: los `LogicalBlock` registrados (con forma propia: demostración o
+  editados) y una `BlockSource` opcional (terreno generado que no ocupa memoria).
+  Todo pasa por `World.materialCode(x, y, z)`, así que dibujar, chocar y calcular
+  caras no pueden discrepar.
+- **`BlockSource` / `TerrainGenerator`**: el terreno como **modelo por columnas**.
+  `TerrainGenerator` guarda una altura por columna y deduce el estrato de cada
+  bloque por profundidad (`materialAt`), responde si una celda es roca enterrada
+  (`isHiddenInterior`) y acota la banda vertical que hay que mallar (`faceRange`).
+  Describe **2.668.776 bloques** ocupando **menos de 1 MB**.
 - **`VoxelMaterial` / `MaterialRegistry`**: identificador, nombre, color RGB
   sólido y un pequeño parámetro de respuesta a la luz. Los colores viven aquí,
   no en cada celda.
@@ -199,24 +226,77 @@ normales planas. El orden es antihorario visto desde fuera, coherente con el
 culling de caras traseras (`GL_BACK` + `GL_CCW`). Formato intercalado
 (9 floats/vertice): posición(3) + normal(3) + color(3).
 
+Para el terreno generado el mesher no recorre el mundo entero: pregunta a la
+fuente de bloques la **banda vertical** que puede producir caras en la huella del
+chunk (`faceRange`) y, dentro de ella, se salta la roca enterrada con
+`isHiddenInterior` (un puñado de comparaciones) en lugar de consultar los seis
+vecinos de cada celda. Solo las celdas expuestas pagan el *culling* completo, y
+los bloques macizos y uniformes se emiten como una cara de 1×1 en lugar de 256
+micro-caras.
+
 ### Renderizado
 
 - **`ShaderProgram`**: compilación/enlazado con informes de error y caché de
   uniformes.
-- **`Mesh`**: VAO + VBO + EBO. Una malla por bloque lógico; se reconstruye solo
-  cuando el bloque está marcado como *dirty* (nunca se recrean buffers por
-  fotograma).
-- **`Renderer`**: estado fijo de OpenGL, iluminación direccional (Lambert) con
-  término ambiental y hemisférico, atenuación suave por distancia, y un ligero
-  *polygon offset* para que las líneas de depuración no sufran *z-fighting*.
+- **`Mesh`**: VAO + VBO + EBO. Una malla por **unidad de dibujo** (un chunk del
+  terreno o un bloque suelto); se reconstruye solo cuando su unidad está marcada
+  como *dirty* (nunca se recrean buffers por fotograma).
+- **`Renderer`**: estado fijo de OpenGL, los parámetros de la iluminación y el
+  pase de fondo del cielo, además de un ligero *polygon offset* para que las
+  líneas de depuración no sufran *z-fighting*. Antes de dibujar cada chunk prueba
+  su **banda vertical** contra el volumen de la vista (*frustum culling*): una sola
+  caja por chunk en lugar de comprobar geometría.
 - **`DebugRenderer`**: bordes de celda (`F2`) y cajas de bloque (`F3`).
 - **`DebugOverlay`**: estadísticas reales del motor dibujadas con
   `stb_easy_font` y una proyección ortográfica. Sin texturas ni fuentes externas.
 
-Las estadísticas muestran FPS, ms por fotograma, número de bloques, resolución,
-microvoxels **almacenados**, microvoxels **ocupados** (distinguiéndolos),
-vértices (duplicados por cara), triángulos y el estado del jugador (apoyado o no,
-modo y velocidad).
+Las estadísticas muestran FPS, ms por fotograma, los **bloques materializados**
+frente a los **generados** (los que describe el terreno sin existir), el rango
+vertical del mundo, la resolución, microvoxels **almacenados**, microvoxels
+**ocupados** (distinguiéndolos), vértices (duplicados por cara), triángulos y el
+estado del jugador (apoyado o no, modo y velocidad).
+
+### Aspecto visual (shaders)
+
+Todo el aspecto vive en los shaders; el renderizador solo aporta sus parámetros
+(`Renderer.LIGHT_DIRECTION`, `AMBIENT`, `LIGHT_INTENSITY`, `SKY_ZENITH`,
+`SKY_HORIZON`, `FOG_DENSITY`).
+
+- **Luz cálida contra cielo frío**: la luz ambiental se tiñe de azul (cielo) y la
+  direccional de ámbar (sol), y cada cara mezcla ambas según su orientación. Es la
+  misma cuenta que antes —Lambert más término hemisférico— con el volumen ganado
+  por el contraste de temperatura.
+- **Luz de contorno**: un término `pow(1 - dot(normal, vista), 3)` muy tenue que
+  solo aparece en caras vistas de canto, para que las siluetas se separen del
+  fondo sin dibujar bordes.
+- **Cielo con gradiente** (`sky.vert` / `sky.frag`): un único triángulo que cubre
+  la pantalla, generado desde `gl_VertexID` (sin buffers) y dibujado sin
+  profundidad. La dirección de vista se obtiene desproyectando la esquina del
+  plano lejano con la inversa de vista × proyección, y el color sale de un
+  gradiente cenit→horizonte. Sustituye el color de limpieza plano, que dejaba
+  medio fotograma de un solo tono.
+- **Perspectiva aérea**: la niebla es exponencial por distancia y mezcla hacia el
+  color del cielo **en esa misma dirección**, con la misma fórmula que el fondo
+  (`skyColorFor()` está duplicada en `sky.frag` y `voxel.frag` a propósito: GLSL no
+  incluye ficheros). Así el terreno lejano se disuelve en el cielo que tiene
+  detrás, sin línea de horizonte artificial ni oscurecimiento.
+- **Saturación**: un último `1.08` de saturación perceptual (Rec. 709) para que los
+  materiales del catálogo ganen presencia sin tocar sus colores.
+
+Medido con una captura real de 960×540 al arrancar la escena (misma cámara y
+misma escena, antes y después):
+
+| Métrica | Antes | Después |
+|---|---|---|
+| Gradiente del cielo (horizonte − cenit) | +2,2 | **+21,4** |
+| Luminancia mediana del fotograma (0-255) | 16 | **74** |
+| Colorido medio (max−min por píxel) | 23,1 | **56,7** |
+| Contraste del terreno cercano (desv. típica) | 37,8 | 27,7 |
+| Píxeles recortados (negro puro o blanco puro) | 0,00 % | 0,00 % |
+
+El contraste cercano baja algo porque la neblina atmosférica se come parte del
+rango en la distancia media; el terreno inmediato sigue siendo el elemento de más
+contraste de la imagen.
 
 ### Colisión (`phys`)
 
@@ -269,21 +349,23 @@ src/main/java/com/microvoxel/
   window/    Window.java
   input/     Input.java
   camera/    Camera.java
-  world/     World.java  Chunk.java  LogicalBlock.java  MicroVoxelGrid.java  BlockPosition.java
+  world/     World.java  Chunk.java  LogicalBlock.java  MicroVoxelGrid.java  BlockPosition.java  BlockSource.java
   phys/      AABB.java  Player.java
   material/  VoxelMaterial.java  MaterialRegistry.java
-  scene/     DemoScene.java  ShapeBuilder.java  TerrainBuilder.java
+  scene/     DemoScene.java  ShapeBuilder.java  TerrainGenerator.java
   mesh/      MicroVoxelMeshBuilder.java  MeshData.java  LineData.java
   render/    Renderer.java  Mesh.java  ShaderProgram.java  DebugRenderer.java
   debug/     DebugOverlay.java
 src/main/resources/shaders/
-  voxel.vert  voxel.frag  debug.vert  debug.frag
+  voxel.vert  voxel.frag  sky.vert  sky.frag  debug.vert  debug.frag
 src/test/java/com/microvoxel/
   world/  MicroVoxelGridTest.java  BlockPositionTest.java  WorldTest.java  WorldCollisionTest.java
   phys/   AABBTest.java  PlayerTest.java
-  scene/  ShapeBuilderTest.java  TerrainBuilderTest.java  TerrainMeshTest.java
+  scene/  ShapeBuilderTest.java  TerrainGeneratorTest.java  TerrainMeshTest.java
   mesh/   MicroVoxelMeshBuilderTest.java
   camera/ CameraTest.java
+  input/  InputTest.java
+  render/ FrustumCullingTest.java
 example/  rd-161348/  (codigo original de Minecraft del que se extrajo la colision)
 ```
 
@@ -291,7 +373,7 @@ example/  rd-161348/  (codigo original de Minecraft del que se extrajo la colisi
 
 ## Pruebas
 
-`./gradlew test` ejecuta 84 pruebas:
+`./gradlew test` ejecuta 97 pruebas:
 
 - **Datos volumétricos**: grilla vacía, ocupar/vaciar, recuperar material,
   límites explícitos, unicidad de índices, resolución no fija.
@@ -323,54 +405,102 @@ example/  rd-161348/  (codigo original de Minecraft del que se extrajo la colisi
 - **Cámara**: el objetivo inicial proyecta en el centro de la vista, la
   orientación es coherente, el sentido horizontal del ratón es el correcto
   (mover a la derecha gira la vista a la derecha), el *pitch* se limita y los
-  bloques de demostración quedan a la vista en el arranque.
-- **Terreno**: es determinista (dos construcciones dan microvoxels idénticos),
-  ocupa una cuadrícula de 8×8×1 = 64 chunks de 16×16×16 bloques, cada bloque es
-  un cubo macizo y uniforme de 16³ voxeles, usa césped/tierra/piedra/arena/agua,
-  empieza en `y = 0` y queda por debajo de los bloques demo, presenta relieve
-  variable, y el meshing por chunk fusiona las caras y mantiene la geometría
-  compacta. También se comprueba que la rejilla de depuración F2 del terreno se
-  genera de forma compacta.
+  bloques de demostración quedan a la vista en el arranque. También se comprueba
+  que la rueda sube y baja la velocidad de la cámara libre en la proporción
+  esperada, que se mantiene dentro de los límites y que el **desplazamiento**
+  real cambia con ella (no solo el número de velocidad).
+- **Entrada**: la rueda acumula las muescas del fotograma (incluidas las
+  fraccionarias de las ruedas de alta resolución) y tanto ella como el ratón se
+  reinician al cerrar el fotograma.
+- **Terreno**: es determinista (dos construcciones describen el mismo relieve) y
+  ocupa una cuadrícula de 8×8 = 64 chunks **sin materializar un solo bloque**
+  (`blockCount() == 0` y `totalStoredMicroVoxels() == 0`); el relieve vive entre
+  `-128` y `64`, hay roca sólida hasta el fondo y aire (o agua) por encima;
+  los estratos son césped/tierra/piedra y arena bajo el agua, y el agua no pasa
+  del nivel del lago. El mundo **acepta bloques hasta `y = 512`** y rechaza todo
+  lo que quede fuera de `[-128, 512]`; un bloque materializado tiene prioridad
+  sobre el terreno generado, también cuando tiene forma propia.
+- **Colisión contra roca que no existe**: el jugador cae y queda apoyado justo
+  sobre la cara superior del bloque de superficie del terreno generado, y el
+  descarte por frustum no puede ocultar ninguna columna cuya superficie esté en
+  pantalla (se comprueba desde cinco cámaras sobre las 16.384 columnas).
+- **Geometría del terreno**: el meshing por banda produce geometría compacta para
+  las 64 columnas de chunks (caras fusionadas en lugar de micro-caras) y la
+  rejilla de depuración `F2` se acota al radio de la cámara.
 
 ---
 
 ## Decisiones y limitaciones de esta iteración
 
-- **Una malla por unidad de dibujo**: el terreno se dibuja como **una malla
-  combinada por chunk** (16 draw calls en lugar de miles) y solo los bloques de
-  demostración sueltos conservan su malla individual. Además, los bloques macizos
-  y uniformes del terreno se emiten como **una sola cara por lado expuesto** en
-  lugar de 256 micro-caras; el tamaño de la geometría deja de depender de la
-  resolución interna. `Renderer.markBlockAndNeighborsDirty` sigue contemplando
-  marcar el bloque vecino cuando una edición toca la frontera.
+- **El terreno no existe como bloques**: es la decisión de fondo de esta
+  iteración. En lugar de un `LogicalBlock` (con su grilla de 16³, 4.096 celdas)
+  por cada posición sólida, se guarda **una altura por columna** (16.384 `int` =
+  **64 KB**) y los estratos se deducen de la profundidad. El terreno describe
+  **2.668.776 bloques** y ocuparía **10.900 millones de celdas** (~10,2 GB solo de
+  `byte[]`) si se materializara: medido, la escena completa se construye en
+  **19 ms** y añade **0,14 MB** al *heap* (los 9 bloques de demostración). Todo lo
+  que pregunta por un bloque (dibujo, colisión, estadísticas) pasa por
+  `World.materialCode`, así que las dos representaciones no pueden discrepar.
+- **Cotas del mundo**: `y = -128` (fondo del terreno) a `y = 512` (cota de
+  construcción). El relieve se queda entre `y = 12` y `y = 64`, de modo que hay
+  más de 400 capas de aire disponible para construir. Un bloque que se registre en
+  el mundo manda sobre el terreno generado, también si tiene forma propia.
+- **Una malla por banda de chunk**: el terreno se dibuja como **una malla
+  combinada por chunk** (64 unidades de dibujo) y solo los bloques de demostración
+  sueltos conservan su malla individual. Mallar las 192 capas del mundo entero
+  sería tirar trabajo: el generador declara la **banda vertical** que puede
+  producir caras (relieve, paredes y fondo), y el mesher recorre solo esa banda y
+  salta con `isHiddenInterior` la roca enterrada. Medido, mallar todo el terreno
+  cuesta **105 ms en frío y 68 ms en caliente** (~1 ms por chunk) y produce
+  **124.670 caras** para 128×128 columnas. Los bloques macizos y uniformes se
+  emiten como **una sola cara por lado expuesto** en lugar de 256 micro-caras, así
+  que el tamaño de la geometría no depende de la resolución interna.
 - **Culling de caras en coordenadas globales**: las fronteras entre bloques y
   entre chunks siguen resolviéndose a través del `World`, por lo que no se dibujan
   caras internas ni se duplican en las fronteras.
-- **Libro de mallas de coste acotado**: el `World` mantiene la lista de bloques
-  que no pertenecen a ningún chunk, así que el repaso de mallas sucias por
-  fotograma recorre esos pocos bloques en lugar de buscar los 9 sueltos entre los
-  122.402 del terreno. Medido, el repaso completo pasó de **3,18 a 0,45 ms por
-  fotograma**. El repaso de chunks (buscar el primer bloque sucio de cada uno)
-  sigue siendo lineal en el número de bloques del terreno; eliminarlo exigiría
-  que el bloque sucio avisara a su chunk.
+- **Descarte por frustum por banda**: cada chunk prueba su caja (la huella
+  horizontal y la banda vertical) contra el volumen de la vista antes de emitir su
+  malla. Con una banda de ~50 bloques, mirar hacia abajo dejaría la mitad del
+  mundo oculta tras el terreno: el descarte deja de ser un adorno. Una prueba
+  recorre 16.384 columnas desde cinco cámaras y comprueba que ninguna columna
+  visible puede quedar descartada (un falso positivo del frustum se vería como
+  terreno que desaparece).
+- **Libro de mallas de coste acotado**: el `World` mantiene aparte la lista de
+  bloques que no pertenecen a ningún chunk (los de demostración), así que el
+  repaso de mallas sucias por fotograma recorre 64 chunks vacíos y 9 bloques sueltos
+  en lugar de buscar los sueltos entre los 2,6 millones de bloques del terreno.
+  Medido, ese repaso cuesta **≈12 µs por fotograma** (antes, con el terreno
+  materializado, 0,45 ms). Eliminar ese coste exigiría que un bloque sucio
+  avisara a su chunk.
 - **Sin sincronización vertical** (`Window.SWAP_INTERVAL = 0`): el bucle no tiene
   tope artificial de FPS, a cambio de más gasto de CPU/GPU y posible desgarro de
   imagen. Como el trabajo por fotograma (libro de mallas, estadísticas, texto de
   depuración) se paga en cada fotograma, cuanto más alto sea el contador de FPS
   más caro sale por segundo. La simulación no depende de ello: avanza a 20 Hz y se
   dibuja interpolada. Poniendo el valor a `1` vuelve la sincronización.
+- **Pantalla completa (`F11`)**: se usa `glfwSetWindowMonitor` con el **modo de
+  vídeo actual** del monitor de la ventana, que es el único mecanismo de GLFW:
+  no hay un modo *borderless windowed* alternativo ni selección de resolución ni
+  de monitor. Por eso `F11` no cambia la resolución del escritorio, y la ventana
+  vuelve a su sitio y tamaño exactos al desactivarlo. La prueba de este camino
+  necesita un monitor real, así que la suite (`./gradlew test`) no lo cubre: las
+  97 pruebas se ejecutan sin ventana ni contexto de OpenGL.
 - **Materiales opacos**: el "cristal" cian se dibuja opaco, como permite el
   enunciado. No hay transparencias por ordenación.
+- **El aspecto es puramente de los shaders**: no hay texturas, ni mapas de
+  normales, ni oclusión ambiental por vértice (la geometría del mesher no lleva
+  ese dato), ni sombras proyectadas, ni reflexiones. El suelo no recibe la sombra
+  de los bloques de demostración y el agua no refracta: son las siguientes
+  mejoras naturales, todas más costosas que un cambio de shader.
 - El modo de depuración `F2` dibuja los **bordes de las caras visibles** (no un
   *wireframe* completo de triángulos), para mostrar la subdivisión sin diagonales
   confusas.
 - **Coste de las estadísticas `F1`**: la ocupación se mantiene en un contador
   incremental por bloque (`MicroVoxelGrid`) y los totales del mundo se actualizan
-  al registrar/retirar bloques. Sin ellos, dibujar las estadísticas recorría las
-  ~500 millones de celdas del terreno en cada fotograma (≈143 ms/fotograma, la
-  caída de FPS al activar `F1`). Ahora el camino completo de estadísticas cuesta
-  <1 ms y no depende del tamaño del terreno salvo por el recorrido lineal de la
-  lista de bloques.
+  al registrar/retirar bloques. Sin ellos, dibujar las estadísticas recorrería las
+  celdas del terreno en cada fotograma (10.900 millones si estuviera
+  materializado). Ahora el camino completo de estadísticas cuesta **≈1,2 µs** y no
+  depende del tamaño del terreno.
 - **Colisión con paso fijo de 20 Hz**: la física se integra en pasos de 0,05 s
   (como el tick del original) y un fotograma simula como máximo 5 pasos; el
   sobrante se descarta para que un fotograma largo no dispare una espiral de
@@ -379,20 +509,29 @@ example/  rd-161348/  (codigo original de Minecraft del que se extrajo la colisi
   de la predicción, no la continuidad.
 - **Materiales no sólidos**: solo el agua. No hay natación ni flotabilidad: al
   atravesarla la gravedad sigue actuando y el jugador se hunde hasta el fondo.
-- **Sin suelo fuera del terreno**: el mundo es finito (128×128 bloques); si el
+- **Sin suelo fuera del terreno**: el mundo es finito (128×128 columnas); si el
   jugador sale por un borde cae indefinidamente. `R` lo devuelve a la superficie.
 - **Un solape no empuja**: como en el original, un recorte solo actúa si las cajas
   están separadas en el eje del movimiento. Si el jugador aparece dentro de un
   bloque puede salir caminando, y al volver del modo sin colisión `unstuck` lo
   sube hasta la primera posición libre (hasta 64 unidades).
 - El terreno de demostración es **fijo y determinista** (nunca cambia entre
-  ejecuciones); no hay generación procedural aleatoria ni mundos infinitos.
+  ejecuciones); no hay generación procedural aleatoria ni mundos infinitos. El
+  relieve incluye **una sola capa de superficie por columna**, así que no hay
+  cuevas, voladizos ni galerías.
+- Los bloques del terreno son **macizos y de un material**: la fuente responde por
+  bloques completos y por eso no puede materializarse. Un bloque con forma propia
+  (editado, perforado, con cavidades) se registra como `LogicalBlock` y tiene
+  prioridad sobre el terreno generado.
 - No se implementan (fuera del alcance de v0.1): mundos
-  infinitos, romper/colocar bloques, inventario, guardado, multijugador, LOD, *greedy
-  meshing*, sombras dinámicas ni mallas asíncronas.
-- La resolución y las dimensiones del mundo son independientes. Los `Chunk`
-  agrupan bloques para el meshing y el dibujo, pero la representación interna de
-  cada bloque (su `MicroVoxelGrid` de 16³) no cambia.
+  infinitos, romper/colocar bloques desde la interfaz (el mundo **sí** acepta
+  bloques hasta `y = 512` por API, y las pruebas lo cubren), inventario, guardado,
+  multijugador, LOD, *greedy meshing*, sombras dinámicas ni mallas asíncronas.
+- La resolución y las dimensiones del mundo son independientes. Un `Chunk` no es
+  un cubo fijo: es una **columna de 16×16 bloques** con una banda vertical propia
+  (`bandMinBlockY`-`bandMaxBlockY`), la que necesita su malla. Puede no contener
+  ningún bloque (el caso de todo el terreno generado) y aun así dibujar su banda;
+  la representación interna de cada bloque (su `MicroVoxelGrid` de 16³) no cambia.
 
 ---
 
