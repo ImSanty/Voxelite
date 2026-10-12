@@ -1,0 +1,12 @@
+.gradle/
+gradle/
+build/
+out/
+bin/
+example/
+.idea/
+*.iml
+.vscode
+!.vscode/settings.json
+!.vscode/extensions.json
+*.log
