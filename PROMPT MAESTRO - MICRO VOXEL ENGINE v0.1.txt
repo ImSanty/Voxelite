@@ -1,0 +1,774 @@
+# PROMPT MAESTRO — Micro Voxel Engine v0.1
+
+## Motor de voxels tridimensionales de alta resolución | Java 21 + LWJGL 3 + OpenGL
+
+Actúa como un ingeniero sénior especializado en motores gráficos, Java, LWJGL, OpenGL y algoritmos de geometría voxel.
+
+Tu tarea es diseñar e implementar la primera versión funcional de un **Micro Voxel Engine**, un pequeño motor gráfico 3D en el que cada bloque lógico del mundo está compuesto por una grilla tridimensional de microvoxels independientes.
+
+No quiero solamente un documento de diseño, pseudocódigo ni una demostración que dibuje cubos de colores. Quiero un proyecto real, compilable, ejecutable y organizado, que demuestre las capacidades fundamentales de esta arquitectura.
+
+Debes implementar el proyecto, ejecutar las pruebas disponibles, compilarlo y corregir los errores encontrados. No te limites a describir lo que harías.
+
+---
+
+# 1. Concepto fundamental del motor
+
+La idea parte de los bloques de juegos como Minecraft, pero cambia la manera en que se construye su geometría.
+
+En un sistema tradicional, un bloque lógico suele tener una apariencia definida por texturas en sus caras. En este motor, cada bloque lógico contiene un volumen tridimensional compuesto por microvoxels.
+
+La jerarquía conceptual será:
+
+**Mundo → bloques lógicos → microvoxels → geometría renderizable.**
+
+Un bloque lógico ocupa una unidad de mundo, como un bloque de Minecraft. Su interior contiene una grilla de microvoxels de resolución configurable.
+
+Por defecto, cada bloque tendrá una resolución de:
+
+* X: 16 microvoxels.
+* Y: 16 microvoxels.
+* Z: 16 microvoxels.
+* Total: 4.096 microvoxels por bloque lógico.
+
+Cada microvoxel representa una celda volumétrica real. Puede estar vacío u ocupado por un material.
+
+La resolución de 16×16×16 es un valor inicial configurable, no una limitación estructural del motor.
+
+**Requisito esencial:** los microvoxels deben poder definir cualquier distribución de ocupación tridimensional dentro del bloque, no solamente su apariencia superficial.
+
+Por ejemplo, un bloque lógico debe poder contener:
+
+* Un volumen completamente sólido.
+* Un volumen parcialmente vaciado.
+* Un túnel que atraviese el bloque.
+* Una cavidad cerrada en su interior.
+* Un arco, escalera o estructura irregular.
+* Varios componentes sólidos desconectados.
+* Una combinación de materiales distribuidos en las tres dimensiones.
+* Una forma asimétrica que no podría representarse con un único cubo tradicional.
+
+El sistema no debe asumir que todo bloque ocupado es necesariamente un cubo sólido. La ocupación de cada microvoxel determina la geometría real.
+
+## 1.1. Diferencia entre bloques lógicos y microvoxels
+
+No confundas estas tres entidades:
+
+**Bloque lógico:** unidad del mundo con una posición, dimensiones y estructura de datos propias. Es el equivalente conceptual al bloque tradicional de un juego voxel.
+
+**Microvoxel:** celda individual dentro del volumen de un bloque lógico. Su ocupación y material contribuyen a construir la forma tridimensional del bloque.
+
+**Chunk:** agrupación espacial de bloques lógicos que permite organizar el mundo y, en el futuro, administrar la generación de geometría, la carga y la descarga de regiones.
+
+Un chunk de 16×16×16 bloques lógicos no equivale a un bloque lógico de 16×16×16 microvoxels. Son niveles distintos de la arquitectura.
+
+Para esta primera iteración, implementa una escena pequeña con unos pocos bloques lógicos. No hace falta generar un chunk de mundo completo de 16³ bloques.
+
+---
+
+# 2. Objetivo visual de la primera iteración
+
+La prioridad es producir una demostración visual convincente de lo que permite esta arquitectura.
+
+La escena inicial debe contener aproximadamente entre 6 y 12 bloques lógicos colocados en el espacio, con una combinación deliberada de formas y materiales.
+
+No generes un terreno procedural ni una montaña aleatoria. Construye una escena de demostración diseñada específicamente para mostrar las capacidades del motor.
+
+La escena debe incluir, como mínimo:
+
+1. **Bloque sólido:** un bloque convencional completamente ocupado.
+2. **Bloque perforado:** un bloque con un túnel que atraviese su volumen.
+3. **Bloque hueco:** una estructura con una cavidad interior claramente visible.
+4. **Bloque escalonado:** una forma tridimensional construida mediante distintos niveles de microvoxels.
+5. **Bloque irregular:** una forma asimétrica, con partes sobresalientes y entrantes.
+6. **Bloque mult material:** un volumen que combine varios materiales de colores diferentes en su interior.
+7. **Bloque con componentes separados:** varias regiones ocupadas que no estén conectadas entre sí.
+
+Puedes combinar estas estructuras con bloques parcialmente superpuestos en su disposición espacial, siempre que sus volúmenes internos sean inequívocos.
+
+Las formas deben diseñarse mediante datos de microvoxels, no mediante modelos 3D tradicionales colocados encima de cubos. Los generadores de formas de demostración deben rellenar o vaciar las celdas de la grilla.
+
+## 2.1. Presentación gráfica
+
+La escena debe verse como una demostración técnica de un motor gráfico real:
+
+* Ventana 3D con una cámara en perspectiva.
+* Fondo oscuro y limpio.
+* Iluminación direccional suave, con sombreado que permita percibir la profundidad.
+* Colores sólidos y diferenciables por material.
+* Sombras de iluminación por cara o normales correctas.
+* Separación visual suficiente entre las estructuras.
+* Una escala coherente para apreciar los microvoxels.
+* Interfaz de depuración discreta.
+* Sin texturas de imagen, modelos externos ni recursos gráficos obligatorios.
+
+El resultado debe permitir reconocer que cada estructura está construida por pequeñas celdas cúbicas volumétricas y que estas definen su forma real.
+
+No añadas bordes permanentes exagerados que hagan que cada microvoxel parezca un cubo separado por huecos. La geometría exterior debe formar superficies continuas y limpias; el modo de depuración permitirá visualizar la subdivisión.
+
+---
+
+# 3. Tecnologías obligatorias
+
+Utiliza las siguientes tecnologías:
+
+* **Lenguaje:** Java 21.
+* **Gestión del proyecto y dependencias:** Gradle.
+* **Ventana, entrada y contexto gráfico:** LWJGL 3.
+* **Renderizado:** OpenGL 3.3 Core Profile.
+* **Shaders:** GLSL 330 Core.
+* **Matemáticas 3D:** JOML.
+* **Pruebas unitarias:** JUnit 5.
+
+No incorpores un motor gráfico de alto nivel como LibGDX, jMonkeyEngine, Unity o Unreal. El propósito es implementar directamente los sistemas fundamentales con LWJGL y OpenGL.
+
+No necesitas una biblioteca de física, un motor de terreno ni un framework de renderizado adicional.
+
+## 3.1. Documentación y enlaces oficiales
+
+Consulta la documentación correspondiente a las versiones elegidas y verifica que las dependencias sean compatibles entre sí.
+
+* JDK 21: https://jdk.java.net/21/
+* Eclipse Temurin 21: https://adoptium.net/temurin/releases/?version=21
+* Documentación Java 21: https://docs.oracle.com/en/java/javase/21/
+* Sitio oficial de LWJGL: https://www.lwjgl.org/
+* Guía de LWJGL: https://www.lwjgl.org/guide
+* Configuración de dependencias LWJGL: https://www.lwjgl.org/customize
+* Repositorio LWJGL: https://github.com/LWJGL/lwjgl3
+* Javadoc de LWJGL: https://javadoc.lwjgl.org/
+* OpenGL: https://www.opengl.org/
+* Referencia OpenGL: https://registry.khronos.org/OpenGL/
+* Referencia de funciones OpenGL: https://registry.khronos.org/OpenGL-Refpages/gl4/
+* JOML: https://joml-ci.github.io/JOML/
+* Repositorio JOML: https://github.com/JOML-CI/JOML
+* Artefacto JOML en Maven Central: https://central.sonatype.com/artifact/org.joml/joml
+* Gradle: https://gradle.org/
+* Guía de proyectos Java con Gradle: https://docs.gradle.org/current/userguide/building_java_projects.html
+* Toolchains de Java en Gradle: https://docs.gradle.org/current/userguide/toolchains.html
+* JUnit 5: https://junit.org/junit5/
+* Maven Central: https://central.sonatype.com/
+
+Selecciona versiones concretas, estables y compatibles de las dependencias. Decláralas explícitamente en los archivos de Gradle, sin depender de versiones implícitas o dinámicas.
+
+Configura correctamente los módulos nativos de LWJGL para el sistema operativo de desarrollo. Documenta cómo cambiar la configuración para otros sistemas operativos cuando corresponda.
+
+---
+
+# 4. Arquitectura de datos
+
+Diseña el código alrededor del concepto de microvoxels volumétricos contenidos en bloques lógicos.
+
+## 4.1. MicroVoxel
+
+Implementa una representación de datos para los microvoxels.
+
+Cada celda debe poder representar:
+
+* Ocupación: vacía u ocupada.
+* Material: identificador del material cuando está ocupada.
+
+No es necesario que cada microvoxel sea un objeto Java independiente. De hecho, evita crear millones de objetos individuales innecesariamente.
+
+Prefiere estructuras compactas, como arrays planos de tipos primitivos.
+
+Una implementación inicial razonable consiste en almacenar un identificador de material por celda, reservando el valor cero para una celda vacía. La ocupación se deduce del identificador.
+
+La estructura debe permitir consultar y modificar cualquier celda mediante coordenadas X, Y y Z.
+
+Define una función inequívoca de conversión de coordenadas tridimensionales a índices lineales. Comprueba que no haya errores de límites ni de orden de ejes.
+
+No hardcodees una resolución de 16 en todos los sistemas. La resolución debe ser un parámetro de la estructura.
+
+## 4.2. LogicalBlock
+
+Implementa una clase que represente un bloque lógico.
+
+Responsabilidades:
+
+* Identificar su posición en el mundo.
+* Definir su resolución interna de microvoxels.
+* Almacenar la distribución tridimensional de ocupación y materiales.
+* Consultar, modificar, rellenar y vaciar microvoxels.
+* Calcular sus límites espaciales.
+* Permitir la construcción de formas a través de utilidades de edición de volumen.
+
+Cada bloque lógico tendrá una extensión de una unidad de mundo por eje, independientemente de su resolución interna.
+
+Si la resolución interna es 16, cada microvoxel tendrá una dimensión de 1/16 de unidad de mundo.
+
+Un bloque lógico completamente vacío no debe generar geometría. Un bloque completamente lleno debe comportarse como un volumen sólido convencional.
+
+## 4.3. MicroVoxelGrid
+
+Implementa la estructura tridimensional que almacena los datos internos de un bloque.
+
+Requisitos:
+
+* Almacenamiento compacto.
+* Acceso por coordenadas.
+* Comprobación de límites.
+* Lectura y escritura de ocupación y material.
+* Inicialización vacía.
+* Operaciones para rellenar volúmenes rectangulares.
+* Operaciones para vaciar volúmenes rectangulares.
+* Utilidades sencillas para construir formas de demostración.
+
+Mantén separadas la representación de los datos y la geometría que se genera para dibujarlos.
+
+## 4.4. VoxelMaterial y MaterialRegistry
+
+Implementa un sistema básico de materiales.
+
+Cada material debe tener:
+
+* Identificador único.
+* Nombre descriptivo.
+* Color RGB sólido.
+* Opcionalmente, un parámetro sencillo de intensidad o respuesta a la iluminación, siempre que no complique innecesariamente la primera iteración.
+
+Crea un registro central de materiales para recuperar sus propiedades a partir del identificador almacenado en cada microvoxel.
+
+Incluye materiales de demostración con colores diferenciables, por ejemplo:
+
+* Piedra gris.
+* Piedra clara.
+* Tierra marrón.
+* Cristal o material brillante de color cian, representado sin transparencia si eso simplifica el renderizado.
+* Material rojo.
+* Material verde.
+* Material amarillo.
+
+Estos nombres y colores son ejemplos; puedes ajustarlos para conseguir una escena más atractiva.
+
+**No utilices texturas para representar los materiales.** Cada material debe producir su color mediante datos y shaders.
+
+No crees una textura de 16×16 píxeles para cada cara. La grilla 16×16×16 representa volumen real, no un mapa de color 2D.
+
+---
+
+# 5. Organización del mundo y los bloques
+
+Implementa una estructura básica de mundo que permita registrar varios bloques lógicos en posiciones diferentes.
+
+Para esta primera versión:
+
+* La escena contiene una cantidad pequeña y fija de bloques.
+* Cada bloque conserva su propia grilla interna.
+* Los bloques pueden utilizar distintas formas y materiales.
+* Las posiciones se expresan en coordenadas de bloques lógicos.
+* El motor debe poder consultar qué bloque ocupa una posición determinada.
+* Los datos de los bloques no deben depender de la malla OpenGL.
+
+La resolución interna y las dimensiones del mundo son conceptos separados.
+
+No es obligatorio implementar todavía chunks de mundo completos, streaming, persistencia en disco o generación infinita. Sin embargo, organiza las clases de manera que posteriormente pueda introducirse una capa de chunks sin reescribir la representación interna de cada bloque.
+
+## 5.1. Coordenadas
+
+Define claramente los sistemas de coordenadas:
+
+1. Coordenadas de bloque lógico.
+2. Coordenadas locales de microvoxels dentro del bloque.
+3. Coordenadas globales de microvoxels.
+4. Coordenadas de mundo en unidades flotantes.
+
+La conversión debe ser consistente entre la representación de datos, la generación de malla, la cámara y el renderizador.
+
+Presta especial atención a los límites entre bloques vecinos. La última celda de un bloque y la primera celda del siguiente deben compartir una frontera espacial correcta, sin separación artificial ni solapamientos.
+
+---
+
+# 6. Generación de geometría
+
+Este es uno de los sistemas más importantes de la primera iteración.
+
+Implementa un `ChunkMeshBuilder` o, si todavía no existe un sistema completo de chunks, un `MicroVoxelMeshBuilder` que genere la geometría visible a partir de los datos volumétricos.
+
+No renderices cada microvoxel como un cubo independiente con seis caras, porque eso generaría una gran cantidad de geometría redundante.
+
+## 6.1. Culling de caras internas
+
+Para cada microvoxel ocupado, examina sus seis vecinos:
+
+* X positivo.
+* X negativo.
+* Y positivo.
+* Y negativo.
+* Z positivo.
+* Z negativo.
+
+Genera una cara únicamente cuando el vecino correspondiente no ocluye esa cara.
+
+Esto incluye:
+
+* Microvoxels vecinos dentro del mismo bloque lógico.
+* Microvoxels que se encuentran en bloques lógicos adyacentes.
+* Fronteras entre regiones ocupadas y regiones vacías.
+
+Si dos microvoxels ocupados comparten una cara, esa cara no debe aparecer en la malla final, aunque los dos microvoxels tengan materiales distintos.
+
+En una frontera entre materiales, se debe conservar la superficie exterior de cada material cuando sea visible, pero no dibujar una cara interna entre celdas ocupadas.
+
+Cuando una celda se encuentre en el límite de su bloque lógico, consulta el bloque vecino correspondiente si existe. Si no existe ningún bloque vecino, considera vacía la región exterior.
+
+## 6.2. Malla combinada
+
+Para la escena inicial, puedes generar una malla combinada para todos los bloques de demostración o una malla por bloque lógico.
+
+Elige una solución sencilla que facilite la corrección y la depuración.
+
+En cualquiera de los dos casos:
+
+* Conserva la propiedad de los datos por bloque lógico.
+* Evita generar caras internas innecesarias.
+* Evita duplicar geometría en las fronteras entre bloques.
+* Genera normales correctas para las superficies.
+* Mantén los colores asociados al material de cada cara o vértice.
+* Utiliza buffers de vértices e índices.
+* Permite reconstruir la malla después de modificar los datos.
+
+La geometría renderizable es una representación derivada. Nunca debe ser la única fuente de verdad sobre la forma de un bloque.
+
+## 6.3. Datos de vértices
+
+Define un formato de vértice claro y consistente.
+
+Como mínimo, cada vértice debe aportar:
+
+* Posición XYZ.
+* Normal XYZ.
+* Color RGB.
+
+Puedes usar un atributo adicional de material si mejora la organización, pero no es obligatorio.
+
+Los colores deben proceder del registro de materiales. No se debe cargar ninguna textura para obtener el color.
+
+## 6.4. Actualización
+
+Implementa una operación que permita reconstruir la geometría de un bloque modificado.
+
+No hace falta crear todavía un sistema avanzado de actualizaciones parciales. Basta con que cambiar la ocupación o el material de un microvoxel permita regenerar correctamente la geometría afectada.
+
+Si se modifica una celda que toca el límite de un bloque lógico, contempla también la posible actualización de la malla del bloque vecino.
+
+---
+
+# 7. Renderizado OpenGL
+
+Implementa un renderizador real mediante OpenGL 3.3 Core.
+
+Debe incluir:
+
+* Creación y administración de VAO.
+* VBO para atributos de vértices.
+* EBO para índices.
+* Compilación y enlazado de shaders.
+* Manejo de errores de compilación y enlazado.
+* Uniformes para las matrices de cámara y la iluminación.
+* Renderizado indexado.
+* Profundidad mediante depth testing.
+* Culling de caras posteriores cuando la orientación de las caras lo permita.
+* Limpieza correcta de recursos.
+
+No utilices funciones antiguas del pipeline fijo de OpenGL. Todo el renderizado debe utilizar shaders y el perfil Core.
+
+## 7.1. Shaders
+
+Crea, como mínimo, los siguientes archivos:
+
+* `voxel.vert`
+* `voxel.frag`
+
+El vertex shader debe transformar las posiciones usando las matrices de modelo, vista y proyección, y transmitir los atributos necesarios al fragment shader.
+
+El fragment shader debe calcular el color del material y aplicar iluminación direccional básica utilizando la normal de la superficie.
+
+Una implementación de iluminación tipo Lambert es suficiente para empezar.
+
+Puedes incluir un término ambiental moderado para evitar que las caras orientadas en dirección opuesta a la luz se vuelvan completamente negras.
+
+No necesitas sombras proyectadas en tiempo real, iluminación global ni efectos de posprocesado.
+
+## 7.2. Apariencia visual
+
+La iluminación debe ayudar a distinguir:
+
+* Caras superiores.
+* Caras laterales.
+* Cavidades.
+* Superficies interiores visibles a través de túneles.
+* Diferentes materiales.
+* Profundidad y volumen.
+
+No introduzcas transparencias complejas en la primera versión. Si incluyes un material llamado cristal, puede ser opaco y de color cian.
+
+---
+
+# 8. Cámara y controles
+
+Implementa una cámara en primera persona que permita explorar la escena.
+
+Controles mínimos:
+
+* `W`: avanzar.
+* `S`: retroceder.
+* `A`: desplazarse a la izquierda.
+* `D`: desplazarse a la derecha.
+* `Espacio`: subir.
+* `Shift`: bajar.
+* Ratón: orientar la cámara.
+* `Escape`: cerrar la aplicación.
+* `F1`: mostrar u ocultar estadísticas.
+* `F2`: activar o desactivar el modo de visualización de bordes de los microvoxels.
+* `F3`: alternar una vista de depuración adicional, si se implementa.
+
+Utiliza GLFW para capturar las entradas.
+
+La cámara debe poder acercarse a las estructuras y entrar visualmente en los túneles o cavidades. No implementes colisiones que impidan hacerlo.
+
+El movimiento debe depender del tiempo transcurrido por fotograma, no de una velocidad fija por fotograma.
+
+La cámara debe utilizar una matriz de vista correcta y una proyección en perspectiva.
+
+---
+
+# 9. Visualización de la estructura interna
+
+La demo debe permitir comprobar que el volumen está realmente subdividido en microvoxels.
+
+Implementa un modo de depuración activable mediante `F2`.
+
+En ese modo, muestra los bordes de las celdas de la superficie visible o una representación de líneas equivalente que permita apreciar la resolución interna de las formas.
+
+La implementación no debe depender de texturas ni de una malla independiente de cubos superpuestos.
+
+Puedes utilizar un segundo pase de renderizado o un sistema de líneas dedicado. Elige la solución que funcione correctamente en OpenGL 3.3 Core.
+
+El modo de depuración debe permitir distinguir entre:
+
+* La superficie exterior de la forma.
+* La subdivisión de microvoxels.
+* Las cavidades y los huecos.
+* Los límites de los bloques lógicos, si se habilita esa opción.
+
+Evita que las líneas de depuración sean tan gruesas que oculten la forma.
+
+Si una representación wireframe completa de todos los triángulos produce diagonales poco útiles, utiliza una representación de bordes de las celdas que sea más clara. Documenta cualquier limitación de la primera implementación.
+
+---
+
+# 10. Escena de demostración
+
+Implementa una clase `DemoScene` que construya los bloques y sus distribuciones internas mediante código.
+
+No uses archivos de modelos externos para definir las formas.
+
+Crea funciones de utilidad que permitan construir formas de microvoxels, como:
+
+* Rellenar un cuboide.
+* Vaciar un cuboide.
+* Construir una pared.
+* Construir un túnel.
+* Construir una cavidad.
+* Crear una escalera.
+* Construir un arco aproximado con celdas.
+* Crear una estructura asimétrica.
+* Combinar varios materiales dentro de una misma grilla.
+
+Las formas pueden ser deliberadamente simples. Lo importante es que demuestren que cada bloque lógico puede contener cualquier distribución tridimensional de celdas ocupadas, siempre dentro de los límites de su resolución.
+
+No construyas las formas mediante modelos externos ni geometría tradicional añadida como decoración.
+
+## 10.1. Composición de la escena
+
+Organiza los bloques para que se puedan observar cómodamente desde la posición inicial de la cámara.
+
+La escena debe mostrar la variedad de formas sin necesidad de recorrer grandes distancias.
+
+Utiliza materiales contrastantes, iluminación agradable y una escala apropiada.
+
+No hace falta generar miles de bloques para demostrar el potencial. Es preferible una pequeña escena cuidadosamente construida, que funcione correctamente y permita inspeccionar sus formas.
+
+---
+
+# 11. Interfaz de depuración y estadísticas
+
+Implementa una superposición de texto sencilla. Puedes utilizar una solución ligera compatible con LWJGL, siempre que documentes la dependencia adicional si fuera necesaria.
+
+Como mínimo, muestra:
+
+* FPS aproximados.
+* Tiempo por fotograma en milisegundos.
+* Cantidad de bloques lógicos de la escena.
+* Resolución de microvoxels por bloque.
+* Cantidad total de microvoxels almacenados.
+* Cantidad de microvoxels ocupados.
+* Cantidad de vértices de la malla renderizada.
+* Cantidad de índices o triángulos renderizados.
+
+Distingue entre el número de microvoxels almacenados y el número de microvoxels ocupados.
+
+Las estadísticas deben derivarse de los datos reales del motor, no ser valores escritos a mano.
+
+No es necesario crear un editor visual, un sistema de inventario ni una interfaz compleja.
+
+---
+
+# 12. Estructura del proyecto
+
+Organiza el código para que cada componente tenga una responsabilidad clara. Una estructura inicial recomendada es:
+
+`src/main/java/.../`
+
+* `Main.java`
+* `engine/Engine.java`
+* `engine/Time.java`
+* `window/Window.java`
+* `input/Input.java`
+* `camera/Camera.java`
+* `world/World.java`
+* `world/LogicalBlock.java`
+* `world/MicroVoxelGrid.java`
+* `world/BlockPosition.java`
+* `material/VoxelMaterial.java`
+* `material/MaterialRegistry.java`
+* `scene/DemoScene.java`
+* `scene/ShapeBuilder.java`
+* `mesh/MicroVoxelMeshBuilder.java`
+* `mesh/MeshData.java`
+* `render/Renderer.java`
+* `render/Mesh.java`
+* `render/ShaderProgram.java`
+* `render/DebugRenderer.java`
+* `debug/DebugOverlay.java`
+
+Recursos:
+
+`src/main/resources/shaders/`
+
+* `voxel.vert`
+* `voxel.frag`
+* `debug.vert`
+* `debug.frag`
+
+Pruebas:
+
+`src/test/java/.../`
+
+* `MicroVoxelGridTest.java`
+* `ShapeBuilderTest.java`
+* `MicroVoxelMeshBuilderTest.java`
+
+Puedes modificar esta estructura si existe una razón técnica concreta, pero mantén separadas las responsabilidades del mundo, los datos volumétricos, la generación de malla y el renderizado.
+
+No concentres todo el código en una sola clase.
+
+---
+
+# 13. Pruebas y criterios de corrección
+
+Implementa pruebas unitarias para comprobar la representación de datos y los algoritmos de generación de geometría.
+
+Como mínimo, verifica los siguientes casos.
+
+## 13.1. Datos volumétricos
+
+* Una grilla nueva está vacía.
+* Se puede ocupar una celda determinada.
+* Se puede vaciar una celda previamente ocupada.
+* El material de una celda se recupera correctamente.
+* Las coordenadas fuera de los límites se gestionan de forma explícita y coherente.
+* La conversión entre coordenadas e índices lineales no mezcla ejes ni sobrescribe celdas diferentes.
+
+## 13.2. Geometría
+
+* Un bloque lógico completamente vacío no genera caras.
+* Un bloque lógico con un único microvoxel ocupado genera un cubo con seis caras visibles.
+* Dos microvoxels adyacentes del mismo material no generan una cara interna entre ellos.
+* Dos microvoxels adyacentes de materiales diferentes tampoco generan una cara interna.
+* Un bloque completamente sólido no genera las caras internas entre sus microvoxels.
+* Una cavidad genera las superficies que delimitan su espacio vacío.
+* Un túnel abierto permite ver el interior de la estructura.
+* Dos bloques lógicos adyacentes no duplican las caras de su frontera compartida.
+* Una región vacía entre dos superficies ocupadas mantiene las caras que delimitan ese espacio.
+
+Cuando una prueba compruebe cantidades de vértices o índices, define claramente si se refiere a vértices únicos, vértices duplicados por cara o índices de triángulos. No asumas que todas las estrategias de generación de malla producen el mismo número de vértices.
+
+Comprueba también que las normales y el orden de los índices sean consistentes con el culling de caras posteriores.
+
+---
+
+# 14. Rendimiento y decisiones de implementación
+
+Esta primera versión no necesita optimizaciones avanzadas, pero sí debe evitar errores de diseño que hagan inviable su evolución.
+
+Requisitos:
+
+* No crear un objeto Java por cada microvoxel.
+* No generar seis caras por cada celda ocupada sin comprobar sus vecinos.
+* No crear ni destruir buffers OpenGL en cada fotograma.
+* No recompilar shaders continuamente.
+* No recalcular toda la geometría en cada fotograma si los datos no han cambiado.
+* No almacenar las mismas propiedades de material innecesariamente en cada celda.
+* No mezclar llamadas OpenGL con las estructuras que almacenan el mundo.
+* No realizar una consulta individual a OpenGL por cada microvoxel para dibujarlo.
+
+Construye la geometría en CPU y envíala a GPU en buffers adecuados.
+
+Usa una estrategia sencilla para marcar una malla como sucia cuando cambien sus datos y reconstruirla solo cuando sea necesario.
+
+No implementes todavía greedy meshing, LOD, generación asíncrona, compute shaders, multithreading complejo ni sistemas avanzados de streaming. Primero asegura la corrección del modelo volumétrico y del renderizado.
+
+La estructura de datos debe permitir añadir esas optimizaciones más adelante sin cambiar el significado de un microvoxel.
+
+---
+
+# 15. Ciclo de vida y estabilidad
+
+La aplicación debe tener un ciclo de vida claro:
+
+1. Inicializar GLFW.
+2. Crear una ventana y un contexto OpenGL 3.3 Core.
+3. Inicializar las capacidades gráficas necesarias.
+4. Crear shaders y recursos de renderizado.
+5. Construir la escena de demostración.
+6. Generar las mallas iniciales.
+7. Ejecutar el bucle de entrada, actualización y renderizado.
+8. Actualizar la cámara y las estadísticas.
+9. Liberar los recursos.
+10. Destruir la ventana y finalizar GLFW.
+
+Comprueba errores durante la inicialización de GLFW, la creación del contexto y la compilación de shaders.
+
+Si la inicialización falla, muestra un mensaje útil que permita identificar el problema.
+
+No dejes recursos nativos sin liberar. Los objetos que administren VAO, VBO, EBO, shaders y ventanas deben tener responsabilidades claras de limpieza.
+
+---
+
+# 16. Entregables obligatorios
+
+Al terminar, el proyecto debe contener:
+
+1. Proyecto Gradle completo.
+2. Configuración de Java 21.
+3. Dependencias LWJGL, OpenGL y JOML configuradas.
+4. Código fuente organizado.
+5. Shaders GLSL.
+6. Sistema de bloques lógicos con volúmenes internos de microvoxels.
+7. Registro de materiales de color sólido.
+8. Generación de malla con eliminación de caras internas.
+9. Gestión correcta de fronteras entre bloques adyacentes.
+10. Cámara libre y controles funcionales.
+11. Escena de demostración con formas tridimensionales variadas.
+12. Modo de depuración para apreciar la subdivisión de microvoxels.
+13. Estadísticas de depuración.
+14. Pruebas unitarias.
+15. README con requisitos, controles, arquitectura y pasos de ejecución.
+
+El README debe incluir los comandos necesarios para compilar, ejecutar y probar el proyecto en el entorno de desarrollo elegido.
+
+Utiliza Gradle Wrapper para que el proyecto no dependa de que el usuario tenga instalada una versión global específica de Gradle.
+
+---
+
+# 17. Restricciones explícitas
+
+No implementes en esta iteración:
+
+* Generación procedural de terreno.
+* Mundos infinitos.
+* Árboles, vegetación ni biomas.
+* Física.
+* Colisiones de jugador.
+* Inventario.
+* Sistema de construcción interactiva.
+* Guardado y carga del mundo.
+* Multijugador.
+* Iluminación global.
+* Sombras dinámicas avanzadas.
+* Materiales basados en texturas.
+* UVs, texture atlases o mapas de textura.
+* Modelos 3D externos para definir las formas de los bloques.
+* Greedy meshing obligatorio.
+* LOD.
+* Compute shaders.
+* Sistemas complejos de multithreading.
+* Un editor completo de mundos.
+
+No añadas características solo para aumentar la cantidad de código. La prioridad es que los sistemas fundamentales funcionen correctamente y tengan una arquitectura extensible.
+
+---
+
+# 18. Orden de implementación
+
+Trabaja en etapas para poder verificar cada subsistema antes de continuar.
+
+**Etapa 1 — Proyecto y ventana**
+
+Configura Java 21, Gradle, LWJGL y JOML. Crea una ventana con contexto OpenGL 3.3 Core y un bucle de renderizado funcional.
+
+**Etapa 2 — Datos volumétricos**
+
+Implementa `MicroVoxelGrid`, `LogicalBlock`, posiciones y materiales. Añade pruebas unitarias para la ocupación y los límites.
+
+**Etapa 3 — Generación de geometría**
+
+Implementa el algoritmo de generación de caras visibles. Verifica los casos de celdas individuales, bloques sólidos, cavidades y fronteras entre bloques.
+
+**Etapa 4 — Renderizador**
+
+Implementa buffers OpenGL, shaders, normales, colores e iluminación.
+
+**Etapa 5 — Cámara**
+
+Añade controles FPS, perspectiva, movimiento y captura del ratón.
+
+**Etapa 6 — Escena de demostración**
+
+Construye los bloques con formas volumétricas variadas utilizando exclusivamente datos de microvoxels.
+
+**Etapa 7 — Depuración**
+
+Añade estadísticas, modo wireframe o visualización de subdivisiones y limpieza de recursos.
+
+**Etapa 8 — Validación**
+
+Ejecuta las pruebas, compila el proyecto y arranca la aplicación. Corrige los errores que encuentres antes de considerar terminada la iteración.
+
+Puedes ajustar el orden si existe una dependencia técnica que lo justifique, pero no omitas ninguna etapa.
+
+---
+
+# 19. Criterios de aceptación final
+
+La primera iteración se considera terminada únicamente cuando se cumplan estas condiciones:
+
+* El proyecto compila con Java 21.
+* La aplicación abre una ventana 3D real.
+* Se puede mover la cámara y explorar la escena.
+* Cada bloque lógico contiene una grilla 3D de microvoxels.
+* La ocupación de esas celdas define la forma real del bloque.
+* Se pueden representar cavidades, túneles, huecos y componentes separados.
+* Los microvoxels pueden usar materiales de colores sólidos diferentes.
+* No se utilizan texturas para representar los materiales.
+* La malla omite las caras internas entre celdas ocupadas.
+* Las fronteras entre bloques lógicos adyacentes se manejan correctamente.
+* Las superficies tienen normales y sombreado adecuados.
+* El modo de depuración permite apreciar la subdivisión interna.
+* Las estadísticas reflejan los datos reales.
+* Las pruebas unitarias principales pasan.
+* La aplicación libera sus recursos correctamente.
+* El README explica cómo ejecutar y probar el proyecto.
+
+## Instrucción final
+
+Antes de escribir el código, analiza brevemente la arquitectura y explica cómo vas a representar la relación entre mundo, bloques lógicos y microvoxels.
+
+Después, implementa el proyecto completo. No te detengas después de generar el esqueleto de carpetas ni entregues clases vacías con comentarios `TODO` como sustituto de la funcionalidad solicitada.
+
+Si necesitas tomar decisiones de implementación no especificadas, elige la alternativa más sencilla, correcta y extensible, y documenta esa decisión.
+
+Si encuentras un problema de compilación o una prueba fallida, investiga la causa y corrígela. No afirmes que algo funciona si no lo has verificado.
+
+**La prioridad absoluta es demostrar un volumen tridimensional real definido por microvoxels, contenido en bloques lógicos, con geometría correcta y renderizado funcional.**
