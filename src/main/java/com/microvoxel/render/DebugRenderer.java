@@ -1,13 +1,10 @@
 package com.microvoxel.render;
 
 import static org.lwjgl.opengl.GL11.GL_DEPTH_TEST;
-import static org.lwjgl.opengl.GL11.GL_LINES;
 import static org.lwjgl.opengl.GL11.glDisable;
 import static org.lwjgl.opengl.GL11.glEnable;
 import static org.lwjgl.opengl.GL11.glLineWidth;
 import static org.lwjgl.opengl.GL11.GL_CULL_FACE;
-
-import org.joml.Matrix4f;
 
 import com.microvoxel.camera.Camera;
 import com.microvoxel.mesh.LineData;
@@ -19,19 +16,23 @@ import com.microvoxel.world.World;
 /**
  * Renderizador del modo de depuracion.
  *
- * <p>Dibuja dos conjuntos de lineas independientes del sombreado normal:</p>
+ * <p>
+ * Dibuja dos conjuntos de lineas independientes del sombreado normal:
+ * </p>
  * <ul>
- *   <li>Bordes de las celdas visibles (F2): una rejilla que muestra la
- *       subdivision real en microvoxels, sin texturas ni mallas de cubos
- *       superpuestas.</li>
- *   <li>Limites de los bloques logicos (F3): la caja de una unidad de cada
- *       bloque, util para distinguir la frontera entre bloques vecinos.</li>
+ * <li>Bordes de las celdas visibles (F2): una rejilla que muestra la
+ * subdivision real en microvoxels, sin texturas ni mallas de cubos
+ * superpuestas.</li>
+ * <li>Limites de los bloques logicos (F3): la caja de una unidad de cada
+ * bloque, util para distinguir la frontera entre bloques vecinos.</li>
  * </ul>
  *
- * <p>Usa el shader de depuracion con una proyeccion en perspectiva igual a la de
+ * <p>
+ * Usa el shader de depuracion con una proyeccion en perspectiva igual a la de
  * la camara. Las lineas se dibujan con prueba de profundidad para que queden
  * ocultas tras la geometria, salvo un ligero desplazamiento de relleno aplicado
- * por {@link Renderer} que evita el z-fighting en las caras visibles.</p>
+ * por {@link Renderer} que evita el z-fighting en las caras visibles.
+ * </p>
  */
 public final class DebugRenderer {
 
@@ -46,8 +47,6 @@ public final class DebugRenderer {
     private ShaderProgram debugShader;
     private Mesh cellBorders;
     private Mesh blockBounds;
-
-    private final Matrix4f identity = new Matrix4f();
 
     public void initialize() {
         debugShader = ShaderProgram.fromResources("debug", "debug.vert", "debug.frag");
@@ -100,7 +99,7 @@ public final class DebugRenderer {
     }
 
     private void draw(Mesh mesh, Camera camera, float aspect,
-                      float r, float g, float b) {
+            float r, float g, float b) {
         if (mesh == null || mesh.isEmpty()) {
             return;
         }
